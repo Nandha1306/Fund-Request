@@ -152,13 +152,22 @@ def set_members(db: Session, actor: User, project: Project, user_ids: list[int])
     )
 
     if added or removed:
+        # Names are stored alongside the ids so the audit trail reads well even if a user is renamed later.
+        names = dict(
+            db.execute(select(User.id, User.full_name).where(User.id.in_(added + removed))).tuples().all()
+        )
         audit.record(
             db,
             entity="projects",
             entity_id=project.id,
             action="members_changed",
             actor_id=actor.id,
-            snapshot={"added": added, "removed": removed},
+            snapshot={
+                "added": added,
+                "removed": removed,
+                "added_names": [names[u] for u in added],
+                "removed_names": [names[u] for u in removed],
+            },
         )
 
     db.commit()

@@ -5,13 +5,16 @@ from typing import Annotated
 
 from fastapi import APIRouter
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.core.db import DbSession
 from app.core.pagination import Page, Pagination, paginate
 from app.modules.accounts.deps import require
-from app.modules.accounts.models import User
+from app.modules.accounts.models import Invitation, User
+from app.modules.accounts.service import display_names
 from app.modules.audit.models import AuditLog
 from app.modules.audit.schemas import AuditLogOut
+from app.modules.projects.models import Project
 
 router = APIRouter(tags=["audit"])
 
@@ -48,6 +51,38 @@ def list_audit(
     stmt = stmt.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
 
     rows, total = paginate(db, stmt, params)
-    return Page[AuditLogOut](
-        items=[AuditLogOut.model_validate(r) for r in rows], total=total, page=params.page, size=params.size
-    )
+    names = display_names(db, (r.actor_id for r in rows))
+    subjects = _subject_labels(db, rows)
+    items = [
+        AuditLogOut.model_validate(r).model_copy(
+            update={
+                "actor_name": names.get(r.actor_id),
+                "subject_label": subjects.get((r.entity, r.entity_id)),
+            }
+        )
+        for r in rows
+    ]
+    return Page[AuditLogOut](items=items, total=total, page=params.page, size=params.size)
+
+
+def _subject_labels(db: Session, rows: list[AuditLog]) -> dict[tuple[str, int], str]:
+    """Readable names for what each row is about, one query per entity type on the page."""
+    ids: dict[str, set[int]] = {}
+    for r in rows:
+        ids.setdefault(r.entity, set()).add(r.entity_id)
+
+    labels: dict[tuple[str, int], str] = {}
+    if project_ids := ids.get("projects"):
+        for pid, code, name in db.execute(
+            select(Project.id, Project.code, Project.name).where(Project.id.in_(project_ids))
+        ):
+            labels[("projects", pid)] = f"{code} · {name}"
+    if user_ids := ids.get("users"):
+        for uid, full_name in display_names(db, user_ids).items():
+            labels[("users", uid)] = full_name
+    if invitation_ids := ids.get("invitations"):
+        for iid, email in db.execute(
+            select(Invitation.id, Invitation.email).where(Invitation.id.in_(invitation_ids))
+        ):
+            labels[("invitations", iid)] = email
+    return labels

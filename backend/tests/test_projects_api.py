@@ -222,7 +222,12 @@ def test_members_replace_is_audited_with_added_and_removed(
     row = db_session.scalar(
         select(AuditLog).where(AuditLog.entity_id == project.id, AuditLog.action == "members_changed")
     )
-    assert row.snapshot == {"added": [c.id], "removed": [a.id]}
+    assert row.snapshot == {
+        "added": [c.id],
+        "removed": [a.id],
+        "added_names": [c.full_name],
+        "removed_names": [a.full_name],
+    }
     listed = client.get(f"/api/projects/{project.id}/members", headers=headers).json()
     assert sorted(m["user_id"] for m in listed) == sorted([b.id, c.id])
 
@@ -243,3 +248,5 @@ def test_ledger_view_is_for_project_managers_only(
         select(func.count()).where(BudgetLedger.project_id == project.id)
     )
     assert body["items"][0]["entry_type"] == "ALLOCATE"
+    assert body["items"][0]["actor_name"] == "Test User"  # make_project's creator, a make_user default
+    assert body["items"][0]["request_ref"] is None  # allocation rows belong to no request

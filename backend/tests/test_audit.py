@@ -76,7 +76,20 @@ def test_audit_api_filters_by_entity(client, db_session, make_user, auth_header)
     body = resp.json()
     assert body["total"] == 2
     assert {i["entity"] for i in body["items"]} == {"projects"}
+    assert {i["actor_name"] for i in body["items"]} == {finance.full_name}
     assert [i["action"] for i in body["items"]] == ["updated", "created"]  # newest first
+
+
+def test_audit_api_names_the_subject(client, db_session, make_user, make_project, auth_header):
+    finance = make_user(Role.FINANCE, full_name="Fiona Finance")
+    project = make_project(code="PRJ-777")
+    project.name = "Water Pilot"
+    for entity, eid in [("projects", project.id), ("users", finance.id)]:
+        audit.record(db_session, entity=entity, entity_id=eid, action="updated", actor_id=finance.id)
+
+    items = client.get("/api/audit", headers=auth_header(finance)).json()["items"]
+    labels = {i["entity"]: i["subject_label"] for i in items}
+    assert labels == {"projects": "PRJ-777 · Water Pilot", "users": "Fiona Finance"}
 
 
 def test_audit_api_date_to_includes_the_whole_day(client, db_session, make_user, auth_header):

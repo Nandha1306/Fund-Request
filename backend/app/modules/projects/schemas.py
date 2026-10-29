@@ -91,7 +91,9 @@ class LedgerEntryOut(BaseModel):
     entry_type: str
     amount: Decimal
     request_id: int | None
+    request_ref: str | None = None
     actor_id: int | None
+    actor_name: str | None = None
     note: str | None
     created_at: datetime
 

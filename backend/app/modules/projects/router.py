@@ -10,7 +10,9 @@ from app.core.enums import ProjectStatus
 from app.core.pagination import Page, Pagination, paginate
 from app.modules.accounts.deps import CurrentUser, require
 from app.modules.accounts.models import User
+from app.modules.accounts.service import display_names
 from app.modules.finance.models import BudgetLedger
+from app.modules.fund_requests.models import FundRequest
 from app.modules.projects import policies, service
 from app.modules.projects.models import Project
 from app.modules.projects.schemas import (
@@ -95,4 +97,14 @@ def get_ledger(project_id: int, db: DbSession, actor: _ProjectEditor, params: Pa
         BudgetLedger.created_at.desc(), BudgetLedger.id.desc()
     )
     rows, total = paginate(db, stmt, params)
-    return _page([LedgerEntryOut.model_validate(r) for r in rows], total, params)
+    names = display_names(db, (r.actor_id for r in rows))
+    request_ids = {r.request_id for r in rows if r.request_id is not None}
+    ref_query = select(FundRequest.id, FundRequest.ref_no).where(FundRequest.id.in_(request_ids))
+    refs = dict(db.execute(ref_query).tuples().all()) if request_ids else {}
+    items = [
+        LedgerEntryOut.model_validate(r).model_copy(
+            update={"actor_name": names.get(r.actor_id), "request_ref": refs.get(r.request_id)}
+        )
+        for r in rows
+    ]
+    return _page(items, total, params)

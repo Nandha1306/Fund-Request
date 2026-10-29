@@ -7,6 +7,7 @@ stored, and it is never written to an audit row, a log line or an error message.
 
 import hashlib
 import secrets
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select, update
@@ -268,6 +269,14 @@ def update_user(db: Session, actor: User, user_id: int, data: UserUpdate) -> Upd
 
     db.commit()
     return UpdateUserResponse(user=admin_out(target), needs_reassignment=needs_reassignment)
+
+
+def display_names(db: Session, user_ids: Iterable[int | None]) -> dict[int, str]:
+    """Full names for the given ids in one query (for audit and ledger rows)."""
+    ids = {uid for uid in user_ids if uid is not None}
+    if not ids:
+        return {}
+    return dict(db.execute(select(User.id, User.full_name).where(User.id.in_(ids))).tuples().all())
 
 
 def list_approvers(db: Session, caller: User) -> list[User]:
