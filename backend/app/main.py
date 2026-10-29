@@ -10,6 +10,7 @@ from app.modules.accounts.router import router as accounts_router
 from app.modules.accounts.users_router import router as users_router
 from app.modules.audit.notifications_router import router as notifications_router
 from app.modules.audit.router import router as audit_router
+from app.modules.expenses.router import router as expenses_router
 from app.modules.fund_requests.router import router as requests_router
 from app.modules.projects.router import router as projects_router
 
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(users_router, prefix="/api")
     app.include_router(projects_router, prefix="/api")
     app.include_router(requests_router, prefix="/api")
+    app.include_router(expenses_router, prefix="/api")
     app.include_router(notifications_router, prefix="/api")
     app.include_router(audit_router, prefix="/api")
 

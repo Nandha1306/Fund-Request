@@ -264,6 +264,31 @@ def people(make_user):
     )
 
 
+# Phase 4 sample files: the type is recognised from these first bytes, whatever the file is called.
+PDF_BYTES = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj << /Type /Catalog >> endobj\ntrailer << >>\n%%EOF\n"
+PNG_BYTES = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + bytes(48)
+JPG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" + bytes(32)
+EXE_BYTES = b"MZ\x90\x00" + bytes(60) + b"PE\x00\x00" + bytes(32)
+
+
+def expense_item(
+    description: str = "Bus tickets",
+    amount: str = "1000.00",
+    *,
+    expense_date: date | None = None,
+    document_ids: tuple[int, ...] = (),
+    **extra,
+) -> dict:
+    """One item of the ``PUT /requests/{id}/expenses`` body."""
+    return {
+        "description": description,
+        "amount": amount,
+        "expense_date": str(expense_date or date.today()),
+        "document_ids": list(document_ids),
+        **extra,
+    }
+
+
 class Flow:
     """Thin wrapper over the request endpoints so tests read like the workflow."""
 
@@ -316,8 +341,101 @@ class Flow:
         assert resp.status_code == 200, resp.text
         return resp.json()
 
+    # -- Phase 4: stages 4–6 ------------------------------------------------
+
+    def version(self, request_id: int) -> int:
+        return self.get(self.people.finance, request_id).json()["version"]
+
+    def upload(self, request_id: int, content: bytes = PDF_BYTES, name: str = "invoice.pdf", *,
+               item_id: int | None = None, user=None, content_type: str = "application/octet-stream"):
+        data = {"expense_item_id": str(item_id)} if item_id is not None else {}
+        return self.client.post(
+            f"/api/requests/{request_id}/documents",
+            files={"file": (name, content, content_type)},
+            data=data,
+            headers=self.auth(user or self.people.requestor),
+        )
+
+    def uploaded(self, request_id: int, **kwargs) -> dict:
+        resp = self.upload(request_id, **kwargs)
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    def save(self, request_id: int, items: list[dict], *, user=None, version=None, **extra):
+        body = {"version": version or self.version(request_id), "items": items, **extra}
+        headers = self.auth(user or self.people.requestor)
+        return self.client.put(f"/api/requests/{request_id}/expenses", json=body, headers=headers)
+
+    def expense_action(self, user, request_id: int, path: str, *, version=None, **body):
+        body["version"] = version or self.version(request_id)
+        return self.client.post(f"/api/requests/{request_id}/{path}", json=body, headers=self.auth(user))
+
+    def submit(self, request_id: int, *, user=None, **kw):
+        return self.expense_action(user or self.people.requestor, request_id, "expenses/submit", **kw)
+
+    def review(self, request_id: int, item_id: int, decision: str = "APPROVED", *, user=None, **kw):
+        path = f"items/{item_id}/review"
+        return self.expense_action(user or self.people.approver, request_id, path, decision=decision, **kw)
+
+    def send_back(self, request_id: int, *, user=None, **kw):
+        return self.expense_action(user or self.people.approver, request_id, "expenses/send-back", **kw)
+
+    def approve_expenses(self, request_id: int, *, user=None, **kw):
+        return self.expense_action(user or self.people.approver, request_id, "expenses/approve", **kw)
+
+    def verify(self, request_id: int, item_id: int, decision: str = "VERIFIED", *, user=None, **kw):
+        path = f"items/{item_id}/verify"
+        return self.expense_action(user or self.people.finance, request_id, path, decision=decision, **kw)
+
+    def return_expenses(self, request_id: int, *, user=None, **kw):
+        return self.expense_action(user or self.people.finance, request_id, "expenses/return", **kw)
+
+    def liquidate(self, request_id: int, *, user=None, **kw):
+        return self.expense_action(user or self.people.finance, request_id, "liquidate", **kw)
+
+    def at_stage4(self, amount: str = "30000.00") -> dict:
+        """Raise, approve and disburse a request: it now waits for the requestor's expenses."""
+        rid = self.raised(amount=amount)["id"]
+        self.ok(self.act(self.people.approver, rid, "approve"))
+        body = self.ok(self.disburse(rid))
+        assert body["status"] == "PENDING_EXPENSE_SUBMISSION"
+        return body
+
+    def with_items(self, request_id: int, *amounts: str, justification: str | None = None) -> dict:
+        """Save one proof-backed item per amount (Stage 4 draft) and return the detail."""
+        items = []
+        for n, amount in enumerate(amounts):
+            doc = self.uploaded(request_id, name=f"proof-{n}.pdf")
+            items.append(expense_item(f"Item {n}", amount, document_ids=(doc["id"],), category="Travel"))
+        extra = {"overspend_justification": justification} if justification else {}
+        return self.ok(self.save(request_id, items, **extra))
+
+    def submitted(self, amount: str = "30000.00", *items: str) -> dict:
+        """A disbursed request at Stage 5 with the given item amounts (default: one item, the full amount).
+        A justification is added when the items exceed the requested amount."""
+        rid = self.at_stage4(amount)["id"]
+        amounts = items or (amount,)
+        over = sum(Decimal(a) for a in amounts) > Decimal(amount)
+        self.with_items(rid, *amounts, justification="Prices went up" if over else None)
+        return self.ok(self.submit(rid))
+
+    def approved_all(self, amount: str = "30000.00", *items: str) -> dict:
+        """A request at Stage 6: every item approved by the approver."""
+        body = self.submitted(amount, *items)
+        for item in body["expense_items"]:
+            self.ok(self.review(body["id"], item["id"]))
+        return self.ok(self.approve_expenses(body["id"]))
+
 
 @pytest.fixture()
 def flow(client, auth_header, people, make_project) -> Flow:
     project = make_project(allocated="100000.00", members=(people.requestor,), created_by=people.finance)
     return Flow(client, auth_header, people, project)
+
+
+@pytest.fixture(autouse=True)
+def media_root(tmp_path, monkeypatch) -> Path:
+    """Uploads go to a per-test temp dir, never into the repo (``storage.get_storage`` reads it per call)."""
+    root = tmp_path / "media"
+    monkeypatch.setattr(get_settings(), "media_root", str(root))
+    return root

@@ -1,4 +1,5 @@
-"""Request endpoints (phase 3 §3.2): raise, list, detail, the stage 1–3 actions and the history."""
+"""Request endpoints (phase 3 §3.2): raise, list, detail, the stage 1–3 actions, liquidation (phase 4) and
+the history.  The stage 4–6 expense endpoints are in ``expenses/router.py``."""
 
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Literal
@@ -17,6 +18,7 @@ from app.modules.fund_requests.models import FundRequest
 from app.modules.fund_requests.schemas import (
     DisburseBody,
     HistoryEntry,
+    LiquidateBody,
     ReasonBody,
     ReassignBody,
     RequestCreate,
@@ -145,6 +147,14 @@ def return_request(
     request_id: int, body: ReasonBody, db: DbSession, actor: Annotated[User, require("request.return")]
 ) -> RequestDetail:
     return service.to_detail(db, actor, finance.return_to_requestor(db, actor, request_id, body))
+
+
+@router.post("/requests/{request_id}/liquidate", response_model=RequestDetail)
+def liquidate_request(
+    request_id: int, body: LiquidateBody, db: DbSession, actor: Annotated[User, require("request.liquidate")]
+) -> RequestDetail:
+    """Close the request: every item verified; underspend needs ``balance_return_ref``."""
+    return service.to_detail(db, actor, finance.liquidate(db, actor, request_id, body))
 
 
 @router.get("/requests/{request_id}/history", response_model=list[HistoryEntry])

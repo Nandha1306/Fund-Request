@@ -22,11 +22,13 @@ from app.core.enums import LedgerEntryType, ProjectStatus, Role
 from app.core.security import create_access_token, hash_password
 from app.modules.accounts.models import User
 from app.modules.finance import budget
-from app.modules.finance.models import BudgetLedger, Disbursement
+from app.modules.finance.models import BudgetLedger, Disbursement, Liquidation
 from app.modules.projects.models import Project, ProjectMember
+from tests.conftest import PDF_BYTES
 
 _TABLES = (
-    "notifications, audit_log, disbursements, budget_ledger, fund_requests, project_members, projects, users"
+    "notifications, audit_log, documents, expense_items, liquidations, disbursements, budget_ledger, "
+    "fund_requests, project_members, projects, users"
 )
 
 
@@ -191,3 +193,53 @@ def test_approve_and_reassign_exactly_one_wins(committed):
         version = db.scalar(text("SELECT version FROM fund_requests WHERE id = :id"), {"id": rid})
     assert version == 2
     _assert_reconciled(w)
+
+
+def _verified_request(w, spent: str) -> tuple[int, int]:
+    """A 5,000 request taken through stages 1–6 up to "every item verified"; returns (id, version)."""
+    client = TestClient(w.app)
+    rid = _approved_request(w)
+    resp = _disburse(w, rid, f"key-{uuid4().hex}")(client)
+    assert resp.status_code == 200, resp.text
+    base = f"/api/requests/{rid}"
+    r, a, f = (w.headers(u) for u in (w.people.requestor, w.people.approver, w.people.finance))
+
+    def post(path: str, headers: dict, **body) -> dict:
+        resp = client.post(f"{base}/{path}", json={"version": version, **body}, headers=headers)
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    files = {"file": ("bill.pdf", PDF_BYTES, "application/pdf")}
+    doc = client.post(f"{base}/documents", files=files, headers=r).json()
+    item = {"description": "Bill", "amount": spent, "expense_date": str(date.today()),
+            "document_ids": [doc["id"]]}
+    body = {"version": 3, "items": [item], "overspend_justification": "More"}
+    version = client.put(f"{base}/expenses", json=body, headers=r).json()["version"]
+    body = post("expenses/submit", r)
+    item_id, version = body["expense_items"][0]["id"], body["version"]
+    version = post(f"items/{item_id}/review", a, decision="APPROVED")["version"]
+    version = post("expenses/approve", a)["version"]
+    body = post(f"items/{item_id}/verify", f, decision="VERIFIED")
+    assert body["allowed_actions"] == ["liquidate"], body
+    return rid, body["version"]
+
+
+@pytest.mark.parametrize("spent", ["6000.00", "4000.00"])  # overspend (top-up) and underspend (return)
+def test_two_parallel_liquidations_settle_once(committed, spent):
+    w = committed
+    rid, version = _verified_request(w, spent)
+
+    def liquidate(client: TestClient):
+        return client.post(f"/api/requests/{rid}/liquidate",
+                           json={"version": version, "balance_return_ref": "RET-1"},
+                           headers=w.headers(w.people.finance))
+
+    results = _race(w.app, liquidate, liquidate)
+    assert sorted(r.status_code for r in results) == [200, 409], [r.text for r in results]
+    with w.Session() as db:
+        assert db.scalar(select(func.count(Liquidation.id)).where(Liquidation.request_id == rid)) == 1
+        entries = db.scalars(select(BudgetLedger.entry_type).where(BudgetLedger.request_id == rid,
+                                                                   BudgetLedger.entry_type == "LIQUIDATE"))
+        assert list(entries) == ["LIQUIDATE"]
+    project = _assert_reconciled(w)
+    assert (project.reserved, project.outstanding, project.liquidated) == (D("0.00"), D("0.00"), D(spent))

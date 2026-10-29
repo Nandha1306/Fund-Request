@@ -22,6 +22,13 @@ class AppError(Exception):
         self.details = details
 
 
+class InvalidFile(AppError):
+    """An upload that is empty, too large or not an accepted type (checked by content)."""
+
+    status_code = 400
+    code = "invalid_file"
+
+
 class NotAuthenticated(AppError):
     status_code = 401
     code = "not_authenticated"

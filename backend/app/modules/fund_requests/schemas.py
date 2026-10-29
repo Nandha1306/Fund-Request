@@ -62,6 +62,45 @@ class DisbursementOut(BaseModel):
     created_at: datetime
 
 
+class DocumentOut(BaseModel):
+    id: int
+    original_name: str
+    mime_type: str
+    size_bytes: int
+    expense_item_id: int | None
+    uploaded_by_name: str | None
+    created_at: datetime
+
+
+class ExpenseItemOut(BaseModel):
+    id: int
+    description: str
+    amount: MoneyOut
+    expense_date: date
+    category: str | None
+    comment: str | None
+    approval_status: str
+    approval_reason: str | None
+    approved_by_name: str | None
+    approved_at: datetime | None
+    verification_status: str
+    verification_reason: str | None
+    verified_by_name: str | None
+    verified_at: datetime | None
+    editable: bool
+    documents: list[DocumentOut]
+
+
+class LiquidationOut(BaseModel):
+    verified_total: MoneyOut
+    disbursed_total: MoneyOut
+    balance_returned: MoneyOut
+    balance_return_ref: str | None
+    top_up_amount: MoneyOut
+    completed_by_name: str | None
+    completed_at: datetime
+
+
 class RequestDetail(RequestSummary):
     purpose: str
     supporting_info: str | None
@@ -71,6 +110,15 @@ class RequestDetail(RequestSummary):
     version: int
     disbursements: list[DisbursementOut]
     allowed_actions: list[str]
+    # Stages 4–6 (phase 4 §3.1)
+    overspend_justification: str | None
+    expense_total: MoneyOut
+    approved_total: MoneyOut
+    verified_total: MoneyOut
+    overage_reserved: MoneyOut
+    expense_items: list[ExpenseItemOut]
+    unattached_documents: list[DocumentOut]
+    liquidation: LiquidationOut | None
 
 
 class HistoryEntry(BaseModel):
@@ -132,3 +180,14 @@ class DisburseBody(BaseModel):
     @classmethod
     def _strip_notes(cls, value: str | None) -> str | None:
         return (value or "").strip() or None
+
+
+class LiquidateBody(BaseModel):
+    version: Version
+    # Required (by the service) only when the verified total is below the money disbursed.
+    balance_return_ref: TxnRef | None = None
+
+    @field_validator("balance_return_ref", mode="before")
+    @classmethod
+    def _blank_ref(cls, value):
+        return None if isinstance(value, str) and not value.strip() else value

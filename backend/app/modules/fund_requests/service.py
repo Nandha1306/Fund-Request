@@ -15,20 +15,24 @@ from decimal import Decimal
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app.core.enums import ProjectStatus, RequestStatus, Role
+from app.core.enums import ApprovalStatus, ProjectStatus, RequestStatus, Role, VerificationStatus
 from app.core.errors import BusinessRuleViolation
 from app.core.money import ZERO, q2
 from app.modules.accounts.models import User
 from app.modules.accounts.service import display_names
 from app.modules.audit import service as audit
 from app.modules.audit.models import AuditLog
+from app.modules.expenses.models import Document, ExpenseItem
 from app.modules.finance import budget
-from app.modules.finance.models import Disbursement
+from app.modules.finance.models import Disbursement, Liquidation
 from app.modules.fund_requests import policies, workflow
 from app.modules.fund_requests.models import FundRequest
 from app.modules.fund_requests.schemas import (
     DisbursementOut,
+    DocumentOut,
+    ExpenseItemOut,
     HistoryEntry,
+    LiquidationOut,
     ProjectRef,
     ReasonBody,
     ReassignBody,
@@ -390,6 +394,29 @@ def to_summaries(db: Session, rows: list[FundRequest]) -> list[RequestSummary]:
     return [RequestSummary(**_summary_fields(r, users, projects)) for r in rows]
 
 
+def expense_items(db: Session, request_id: int) -> list[ExpenseItem]:
+    """The request's expense items, ordered by id."""
+    return list(
+        db.scalars(select(ExpenseItem).where(ExpenseItem.request_id == request_id).order_by(ExpenseItem.id))
+    )
+
+
+def _sum(amounts) -> Decimal:
+    return q2(sum((q2(a) for a in amounts), ZERO))
+
+
+def document_out(d: Document, names: dict[int, str]) -> DocumentOut:
+    return DocumentOut(
+        id=d.id,
+        original_name=d.original_name,
+        mime_type=d.mime_type,
+        size_bytes=d.size_bytes,
+        expense_item_id=d.expense_item_id,
+        uploaded_by_name=names.get(d.uploaded_by),
+        created_at=d.created_at,
+    )
+
+
 def to_detail(db: Session, user: User, request: FundRequest) -> RequestDetail:
     users = _user_refs(db, {request.requestor_id, request.approver_id})
     projects = _project_refs(db, {request.project_id})
@@ -398,7 +425,22 @@ def to_detail(db: Session, user: User, request: FundRequest) -> RequestDetail:
             select(Disbursement).where(Disbursement.request_id == request.id).order_by(Disbursement.id)
         )
     )
-    names = display_names(db, (d.created_by for d in rows))
+    items = expense_items(db, request.id)
+    documents = list(
+        db.scalars(select(Document).where(Document.request_id == request.id).order_by(Document.id))
+    )
+    liquidation = db.scalar(select(Liquidation).where(Liquidation.request_id == request.id))
+    names = display_names(
+        db,
+        [d.created_by for d in rows]
+        + [i.approved_by for i in items]
+        + [i.verified_by for i in items]
+        + [d.uploaded_by for d in documents]
+        + ([liquidation.completed_by] if liquidation else []),
+    )
+    docs_by_item: dict[int | None, list[DocumentOut]] = {}
+    for d in documents:
+        docs_by_item.setdefault(d.expense_item_id, []).append(document_out(d, names))
     paid = q2(sum((q2(d.amount) for d in rows), ZERO))
     disbursable = ZERO
     if request.status == RequestStatus.PENDING_DISBURSEMENT.value and request.amount_approved is not None:
@@ -423,7 +465,47 @@ def to_detail(db: Session, user: User, request: FundRequest) -> RequestDetail:
             )
             for d in rows
         ],
-        allowed_actions=workflow.allowed_actions(user, request, paid),
+        allowed_actions=workflow.allowed_actions(user, request, paid, items),
+        overspend_justification=request.overspend_justification,
+        expense_total=_sum(i.amount for i in items),
+        approved_total=_sum(i.amount for i in items if i.approval_status == ApprovalStatus.APPROVED),
+        verified_total=_sum(i.amount for i in items if i.verification_status == VerificationStatus.VERIFIED),
+        overage_reserved=request.overage_reserved,
+        expense_items=[
+            ExpenseItemOut(
+                id=i.id,
+                description=i.description,
+                amount=i.amount,
+                expense_date=i.expense_date,
+                category=i.category,
+                comment=i.comment,
+                approval_status=i.approval_status,
+                approval_reason=i.approval_reason,
+                approved_by_name=names.get(i.approved_by),
+                approved_at=i.approved_at,
+                verification_status=i.verification_status,
+                verification_reason=i.verification_reason,
+                verified_by_name=names.get(i.verified_by),
+                verified_at=i.verified_at,
+                editable=workflow.is_item_editable(i),
+                documents=docs_by_item.get(i.id, []),
+            )
+            for i in items
+        ],
+        unattached_documents=docs_by_item.get(None, []),
+        liquidation=(
+            LiquidationOut(
+                verified_total=liquidation.verified_total,
+                disbursed_total=liquidation.disbursed_total,
+                balance_returned=liquidation.balance_returned,
+                balance_return_ref=liquidation.balance_return_ref,
+                top_up_amount=liquidation.top_up_amount,
+                completed_by_name=names.get(liquidation.completed_by),
+                completed_at=liquidation.completed_at,
+            )
+            if liquidation
+            else None
+        ),
     )
 
 

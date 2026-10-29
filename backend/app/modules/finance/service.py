@@ -1,4 +1,4 @@
-"""Finance use cases for stage 3: disburse, and return a request to the requestor.
+"""Finance use cases: disburse and return a request to the requestor (stage 3), liquidate (stage 6).
 
 Same shape as ``fund_requests/service.py``: lock project then request, money only through
 ``budget``, status only through ``workflow.apply``, exactly one ``db.commit()``.
@@ -14,11 +14,12 @@ from app.core.errors import BusinessRuleViolation, Conflict
 from app.core.money import ZERO, q2
 from app.modules.accounts.models import User
 from app.modules.audit import service as audit
+from app.modules.expenses.models import ExpenseItem
 from app.modules.finance import budget
-from app.modules.finance.models import Disbursement
+from app.modules.finance.models import Disbursement, Liquidation
 from app.modules.fund_requests import policies, workflow
 from app.modules.fund_requests.models import FundRequest
-from app.modules.fund_requests.schemas import DisburseBody, ReasonBody
+from app.modules.fund_requests.schemas import DisburseBody, LiquidateBody, ReasonBody
 from app.modules.fund_requests.service import disbursed_total, inr, lock_visible
 from app.modules.fund_requests.workflow import Action
 from app.modules.projects.models import Project
@@ -143,6 +144,100 @@ def return_to_requestor(db: Session, actor: User, request_id: int, data: ReasonB
             user_ids=[request.requestor_id],
             type="request_returned",
             message=f"{request.ref_no} was returned to you by {actor.full_name}: {data.reason}",
+            request_id=request.id,
+        )
+    db.commit()
+    return request
+
+
+# ---------------------------------------------------------------------------
+# Stage 6: liquidation
+# ---------------------------------------------------------------------------
+
+ALREADY_LIQUIDATED = "This request has already been liquidated"
+BALANCE_REF_REQUIRED = (
+    "A balance-return reference is required when the verified total is below the disbursed amount"
+)
+
+
+def liquidate(db: Session, actor: User, request_id: int, data: LiquidateBody) -> FundRequest:
+    """Settle the request (arch §9.2): outstanding and overage clear, the verified total is liquidated.
+
+    Underspend → the difference is a balance return and needs its reference; overspend → the reserved
+    overage is paid as a top-up.  One liquidation per request (unique ``request_id`` → 409).
+    """
+    with db.begin_nested():
+        project, request = lock_visible(db, actor, request_id)
+        workflow.ensure_version(request, data.version)
+        workflow.check(request, Action.LIQUIDATE, data.version)
+        items = list(
+            db.scalars(
+                select(ExpenseItem)
+                .where(ExpenseItem.request_id == request.id)
+                .execution_options(populate_existing=True)
+            )
+        )
+        guard = workflow.item_guard(Action.LIQUIDATE, items)
+        if guard is not None:
+            raise BusinessRuleViolation(guard)
+
+        verified = q2(sum((q2(i.amount) for i in items), ZERO))
+        disbursed = disbursed_total(db, request.id)
+        split = budget.settlement(verified, disbursed)
+        ref = data.balance_return_ref if split.balance_return > ZERO else None
+        if split.balance_return > ZERO and not ref:
+            raise BusinessRuleViolation(
+                BALANCE_REF_REQUIRED,
+                details={
+                    "verified_total": str(verified),
+                    "disbursed_total": str(disbursed),
+                    "balance_return": str(split.balance_return),
+                },
+            )
+        if db.scalar(select(Liquidation.id).where(Liquidation.request_id == request.id)):
+            raise Conflict(ALREADY_LIQUIDATED)
+
+        row = Liquidation(
+            request_id=request.id,
+            verified_total=verified,
+            disbursed_total=disbursed,
+            balance_returned=split.balance_return,
+            balance_return_ref=ref,
+            top_up_amount=split.top_up,
+            completed_by=actor.id,
+        )
+        try:
+            with db.begin_nested():
+                db.add(row)
+                db.flush()
+        except IntegrityError:
+            raise Conflict(ALREADY_LIQUIDATED) from None
+
+        budget.settle(db, project, request, verified=verified, disbursed=disbursed, actor_id=actor.id)
+        workflow.apply(
+            db,
+            request,
+            Action.LIQUIDATE,
+            actor_id=actor.id,
+            expected_version=data.version,
+            snapshot={
+                "verified_total": str(verified),
+                "disbursed_total": str(disbursed),
+                "balance_returned": str(split.balance_return),
+                "balance_return_ref": ref,
+                "top_up_amount": str(split.top_up),
+            },
+        )
+        message = f"{request.ref_no} was liquidated by {actor.full_name}: verified {inr(verified)}"
+        if split.balance_return > ZERO:
+            message += f", balance of {inr(split.balance_return)} returned (ref {ref})"
+        elif split.top_up > ZERO:
+            message += f", top-up of {inr(split.top_up)} paid"
+        audit.notify(
+            db,
+            user_ids=[request.requestor_id, request.approver_id],
+            type="request_liquidated",
+            message=message,
             request_id=request.id,
         )
     db.commit()
