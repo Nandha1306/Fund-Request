@@ -4,9 +4,60 @@ Employees request funds against a project budget. The request is approved, Finan
 submits expenses with proofs, the approver reviews each item, and Finance verifies the items and liquidates. The whole
 process runs as a six-stage workflow with role-based access, budget reservations and a full audit trail.
 
-> **Status:** Phase 2 of 6 done and connected to the web app: sign-in, invitations, users and access, projects with
-> live budgets, members, ledger and the audit log. The request workflow (stages 1–6) follows in Phases 3–4, built
-> backend and frontend together. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
+> **Status:** MVP complete. All six stages work end to end in the web app: raise, approve, disburse, expenses with
+> proofs, item-level review, verification and liquidation, with rejection routing, budgets, audit and notifications.
+> Plans and contracts per phase are in [docs/phase/](docs/phase/).
+
+## Demo in five minutes
+
+```bash
+docker compose up -d db
+cd backend && .venv\Scripts\activate
+alembic upgrade head
+python -m app.seed --with-requests   # users, projects and one request in every status
+uvicorn app.main:app                  # API on :8000
+cd ../frontend && npm run dev         # http://localhost:5173
+```
+
+Sign in with a demo account (all `Demo@1234`), then walk the flow:
+
+1. **req.a@demo.local** → Requests → New request on PRJ-001 to Approver A. The budget is reserved at once.
+2. **approver.a@demo.local** → *Waiting on me* → Reject with a reason → the request is back with the requestor.
+3. **req.a** → Correct and resubmit → **approver.a** → Approve.
+4. **finance@demo.local** → Disburse (transaction ref, date). A double click or retry never pays twice.
+5. **req.a** → add expense items with PDF/JPG/PNG proofs; above the requested amount a justification is required.
+6. **approver.a** → approve or reject each item → final approval.
+7. **finance** → verify each item → Liquidate (top-up when overspent, balance-return reference when underspent).
+8. Check the project's budget figures and Ledger, the request History, the bell, and the Audit log.
+
+The seeded requests (FR-2026-0001 … 0010) show every status without clicking through first.
+
+**One-command walkthrough** (for reviewers): with the API running, `python scripts/walkthrough.py` drives the whole
+six-stage flow through the real API with every role — rejection and resubmission, an idempotent payout, expenses with
+receipts and an overspend justification, an item rejected and fixed, an item returned by Finance that passes review
+again, liquidation with a top-up, an underspend with a balance return — then checks the guard rails (visibility,
+self-approval, budget limit, stale screens, fake PDF, double liquidation). It prints each step with the budget figures
+and ends with links to open the same requests in the web app. Use `--api` / `--ui` for other ports.
+
+## Business rules
+
+| Rule | How it is enforced |
+|---|---|
+| Six-stage workflow; anything not in the transition table is refused | One `TRANSITIONS` table (`fund_requests/workflow.py`); invalid moves → 409 |
+| Rejection routing: Stage 2/3 → Stage 1; Stage 5/6 → Stage 4; a reason is mandatory | Same table; reason required on every reject / return |
+| Budget is reserved on submit, released on reject / return / withdraw | Budget engine (`finance/budget.py`), the only code that changes money |
+| A project can never commit more than its allocation, even with simultaneous requests | Project row locked (`SELECT … FOR UPDATE`) + database CHECK constraint |
+| No duplicate payouts or liquidations | `Idempotency-Key` on disburse, unique transaction refs, one liquidation per request (unique constraint) |
+| Returned after payout: the disbursement is kept; only a shortfall can be paid later; no shortfall skips Stage 3 | D3 in the architecture; tested in `test_return_after_payout.py` |
+| Expenses above the request need a justification; the extra above the payout is reserved and paid as a top-up | D4; underspend is recorded as a balance return with a reference (D5) |
+| Every expense item needs a proof (PDF/JPG/PNG checked by content, size limit) | D6; files stored under random names, downloaded only through a visibility check |
+| Approved items stay locked; items Finance returns pass Stage 5 again | D9 |
+| Requestors and approvers see only their requests (others get 404); Finance and Super Admin see all | Visibility filter on every query and file download |
+| Super Admin has no money actions unless `can_finance_ops` is granted; nobody approves their own request | Permission catalogue + DB CHECK `requestor_id <> approver_id` |
+| Stale screens can't overwrite newer data | `version` on every write; mismatch → 409 "This request changed — Reload" |
+| Every transition and money movement is recorded | Audit log (who, when, from/to status, reason, snapshot) and an append-only budget ledger that reconciles with project totals |
+
+Full reasoning: [architecture PDF](docs/Fund_Request_Liquidation_MVP_Architecture.pdf) §7–§11 and decisions D1–D12 in §17.
 
 ## Web app
 

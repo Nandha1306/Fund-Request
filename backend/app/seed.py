@@ -143,7 +143,7 @@ def _ensure_member(db: Session, project: Project, user: User, added_by: User) ->
 # Main
 # ---------------------------------------------------------------------------
 
-def seed() -> None:
+def seed(with_requests: bool = False) -> None:
     settings = get_settings()
     if settings.environment != "local":
         print(f"ERROR: seed refused to run in environment={settings.environment!r}. Local only.")
@@ -182,6 +182,14 @@ def seed() -> None:
             print(f"  member {email} → {code}: {'added' if created else 'already present'}")
 
         db.commit()
+
+        if with_requests:
+            from app.demo_requests import create_demo_requests
+
+            lines = create_demo_requests(db)
+            print("  demo requests:", "already present" if not lines else "")
+            for line in lines:
+                print(f"    {line}")
         print("=== Done ===")
 
     except Exception:
@@ -192,4 +200,4 @@ def seed() -> None:
 
 
 if __name__ == "__main__":
-    seed()
+    seed(with_requests="--with-requests" in sys.argv)
