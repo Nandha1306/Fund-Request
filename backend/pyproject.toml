@@ -1,0 +1,20 @@
+[project]
+name = "fund-request-api"
+version = "0.1.0"
+description = "Project Fund Request and Liquidation Management System - API"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+# the local alembic/ migrations folder would otherwise be mistaken for the library
+known-third-party = ["alembic"]
