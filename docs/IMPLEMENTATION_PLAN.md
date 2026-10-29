@@ -134,6 +134,8 @@ All demo passwords are `Demo@1234` (local only; documented in the README).
 
 **Branch:** `feat/phase-1-data-model-auth` · **Time:** 35 min · **Architecture:** arch §10, §12
 
+Detailed plan: [phase/PHASE-1-data-model-auth.md](phase/PHASE-1-data-model-auth.md)
+
 ### 5.1 Tasks
 
 **Core helpers**
