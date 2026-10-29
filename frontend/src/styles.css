@@ -1,0 +1,165 @@
+/* Global layout and the few product-specific patterns antd does not provide.
+   Colours mirror src/theme.ts. */
+
+:root {
+  --ink: #1c2430;
+  --muted: #5b6675;
+  --subtle: #8a94a3;
+  --border: #dfe3e9;
+  --border-soft: #eceff3;
+  --canvas: #f3f5f7;
+  --surface: #ffffff;
+  --primary: #2f5f98;
+  --sidebar: #17202b;
+  --sidebar-hover: #202b38;
+  --sidebar-active: #263445;
+  --sidebar-text: #aeb8c5;
+  --budget-liquidated: #24476f;
+  --budget-outstanding: #5b8ec7;
+  --budget-reserved: #d4a03a;
+  --budget-available: #e6eaef;
+}
+
+* { box-sizing: border-box; }
+/* antd's <App> renders a wrapper div; it must fill the viewport too, or the shell grows with its content. */
+html, body, #root, #root > .ant-app { height: 100%; }
+body { margin: 0; background: var(--canvas); color: var(--ink); -webkit-font-smoothing: antialiased; }
+
+.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.muted { color: var(--muted); }
+.subtle { color: var(--subtle); }
+.mono { font-family: Consolas, "SF Mono", Menlo, monospace; }
+
+/* ---------- App shell ---------- */
+.shell { display: flex; height: 100%; }
+.sidebar {
+  width: 216px; flex: none; display: flex; flex-direction: column;
+  background: var(--sidebar); color: var(--sidebar-text);
+}
+.brand { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 18px; }
+.brand-mark {
+  width: 26px; height: 26px; border-radius: 6px; flex: none;
+  background: #2f5f98; color: #fff; font-weight: 700; font-size: 12px; letter-spacing: 0.5px;
+  display: grid; place-items: center;
+}
+.brand-name { color: #f3f6f9; font-weight: 600; font-size: 14px; letter-spacing: 0.2px; }
+.brand-sub { color: #7d8896; font-size: 11px; line-height: 1.2; }
+
+.nav { flex: 1; padding: 8px 10px; overflow-y: auto; }
+.nav-group { margin: 14px 8px 6px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: #6c7786; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; margin-bottom: 2px;
+  border-radius: 6px; color: var(--sidebar-text); text-decoration: none; font-size: 13px;
+  position: relative;
+}
+.nav-item:hover { background: var(--sidebar-hover); color: #e6ebf1; }
+.nav-item.active { background: var(--sidebar-active); color: #ffffff; }
+.nav-item.active::before {
+  content: ""; position: absolute; left: -10px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0;
+  background: #6ea2dd;
+}
+.nav-item .anticon { font-size: 15px; opacity: 0.9; }
+
+.account { border-top: 1px solid #243040; padding: 12px 14px; display: flex; align-items: center; gap: 10px; }
+.avatar {
+  width: 30px; height: 30px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  background: #2d3b4d; color: #dbe4ee; font-size: 11.5px; font-weight: 600;
+}
+.account-name { color: #e8edf2; font-size: 12.5px; font-weight: 500; line-height: 1.25; }
+.account-role { color: #7d8896; font-size: 11.5px; }
+.account-text { flex: 1; min-width: 0; }
+.account-text > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.main { flex: 1; min-width: 0; overflow-y: auto; }
+.page { padding: 20px 28px 32px; max-width: 1400px; }
+
+/* ---------- Page header ---------- */
+.page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.page-title { margin: 0; font-size: 19px; font-weight: 600; line-height: 1.3; display: flex; align-items: center; gap: 10px; }
+.page-desc { margin-top: 3px; color: var(--muted); font-size: 13px; }
+.crumbs { font-size: 12px; color: var(--subtle); margin-bottom: 6px; }
+.crumbs a { color: var(--muted); }
+.crumbs a:hover { color: var(--primary); }
+.crumbs .sep { margin: 0 6px; }
+.page-actions { display: flex; gap: 8px; flex: none; }
+
+/* ---------- Panels ---------- */
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.panel + .panel, .panel-gap { margin-top: 16px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-soft); }
+.panel-title { font-size: 13.5px; font-weight: 600; }
+.panel-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.panel-body { padding: 16px; }
+.panel .ant-table-wrapper .ant-table { border-radius: 0 0 8px 8px; }
+.panel .ant-tabs-nav { margin: 0; padding: 0 16px; }
+
+.toolbar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border-soft); flex-wrap: wrap; }
+.toolbar .grow { flex: 1; }
+
+/* ---------- Figures (budget numbers) ---------- */
+.figures { display: grid; grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr)); }
+.figure { padding: 14px 16px; border-right: 1px solid var(--border-soft); }
+.figure:last-child { border-right: none; }
+.figure-label { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.figure-value { font-size: 18px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.figure-note { font-size: 11.5px; color: var(--subtle); margin-top: 2px; }
+.swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; flex: none; }
+
+/* ---------- Budget bar ---------- */
+.budget-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--budget-available); }
+.budget-bar > span { display: block; height: 100%; }
+.budget-bar.thin { height: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---------- Small pieces ---------- */
+.code-pill {
+  display: inline-block; padding: 1px 7px; border-radius: 4px; background: #eef1f5; color: #3a4655;
+  font-family: Consolas, "SF Mono", Menlo, monospace; font-size: 12px; letter-spacing: 0.2px;
+}
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; }
+.cell-main { font-weight: 500; }
+.cell-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.row-link { cursor: pointer; }
+.empty { padding: 36px 16px; text-align: center; }
+.empty-title { font-weight: 600; font-size: 13.5px; }
+.empty-desc { color: var(--muted); margin-top: 4px; font-size: 12.5px; }
+
+.activity { list-style: none; margin: 0; padding: 0; }
+.activity li { display: flex; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border-soft); }
+.activity li:last-child { border-bottom: none; }
+.activity-time { width: 92px; flex: none; font-size: 12px; color: var(--subtle); padding-top: 1px; }
+.activity-text { font-size: 13px; }
+
+.kv { display: grid; grid-template-columns: 140px 1fr; row-gap: 10px; column-gap: 16px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+
+.diff { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.diff th { text-align: left; font-weight: 500; color: var(--muted); padding: 4px 12px 4px 0; width: 160px; }
+.diff td { padding: 4px 12px 4px 0; }
+.diff .old { color: var(--subtle); text-decoration: line-through; }
+
+.link-box { display: flex; gap: 8px; }
+.link-box input { font-family: Consolas, "SF Mono", Menlo, monospace; font-size: 12px; }
+
+/* ---------- Sign-in screens ---------- */
+.auth { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 32px 16px; }
+.auth-card { width: 380px; }
+.auth-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+.auth-brand .brand-name { color: var(--ink); font-size: 15px; }
+.auth-brand .brand-sub { color: var(--muted); }
+.auth-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 26px 28px 22px; }
+.auth-title { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+.auth-desc { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
+.auth-foot { margin-top: 14px; font-size: 12px; color: var(--subtle); text-align: center; }
+.demo-accounts { margin-top: 14px; border: 1px dashed #cfd6df; border-radius: 8px; padding: 10px 12px; font-size: 12px; }
+.demo-accounts-title { color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+.demo-accounts button {
+  all: unset; cursor: pointer; display: flex; justify-content: space-between; width: 100%;
+  padding: 4px 6px; border-radius: 4px; color: var(--ink);
+}
+.demo-accounts button:hover { background: #f1f4f8; }
+
+.center-screen { height: 100%; display: grid; place-items: center; }

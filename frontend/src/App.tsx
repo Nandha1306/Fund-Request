@@ -1,21 +1,36 @@
-import { Layout, Typography } from 'antd'
+import { lazy, Suspense } from 'react'
 import { Route, Routes } from 'react-router-dom'
 
-import HomePage from './pages/HomePage'
+import { FullScreenLoader, RequireAuth, RequirePermission } from './auth/guards'
+import { AppLayout } from './components/AppLayout'
+import { NotFound } from './components/States'
+
+// One chunk per page, so the first load only fetches what the screen needs.
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const AcceptInvitePage = lazy(() => import('./pages/AcceptInvitePage'))
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const ProjectsPage = lazy(() => import('./pages/projects/ProjectsPage'))
+const ProjectDetailPage = lazy(() => import('./pages/projects/ProjectDetailPage'))
+const UsersPage = lazy(() => import('./pages/users/UsersPage'))
+const AuditPage = lazy(() => import('./pages/AuditPage'))
 
 export default function App() {
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Layout.Header style={{ display: 'flex', alignItems: 'center' }}>
-        <Typography.Text strong style={{ color: '#fff', fontSize: 16 }}>
-          Fund Request &amp; Liquidation
-        </Typography.Text>
-      </Layout.Header>
-      <Layout.Content style={{ padding: 24 }}>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-        </Routes>
-      </Layout.Content>
-    </Layout>
+    <Suspense fallback={<FullScreenLoader />}>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/accept-invite" element={<AcceptInvitePage />} />
+        <Route element={<RequireAuth />}>
+          <Route element={<AppLayout />}>
+            <Route index element={<DashboardPage />} />
+            <Route path="projects" element={<ProjectsPage />} />
+            <Route path="projects/:id" element={<ProjectDetailPage />} />
+            <Route path="users" element={<RequirePermission permission="user.manage"><UsersPage /></RequirePermission>} />
+            <Route path="audit" element={<RequirePermission permission="audit.view"><AuditPage /></RequirePermission>} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
+        </Route>
+      </Routes>
+    </Suspense>
   )
 }
