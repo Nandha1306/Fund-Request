@@ -1,4 +1,4 @@
-import type { LedgerEntryType, RequestStatus, Role } from '../api/types'
+import type { ApprovalStatus, LedgerEntryType, RequestStatus, Role, VerificationStatus } from '../api/types'
 
 export const ROLE_LABEL: Record<Role, string> = {
   REQUESTOR: 'Requestor',
@@ -46,10 +46,21 @@ export const ACTION_LABEL: Record<string, string> = {
   approved: 'Approved',
   rejected: 'Rejected',
   reassigned: 'Reassigned',
-  disbursed: 'Disbursed',
   disbursement_skipped: 'Skipped disbursement',
   returned: 'Returned',
   withdrawn: 'Withdrawn',
+  expenses_saved: 'Saved expenses',
+  document_uploaded: 'Uploaded a document',
+  document_deleted: 'Deleted a document',
+  expenses_submitted: 'Submitted expenses',
+  item_approved: 'Approved an item',
+  item_rejected: 'Rejected an item',
+  expenses_sent_back: 'Sent expenses back',
+  expenses_approved: 'Approved expenses',
+  item_verified: 'Verified an item',
+  item_returned: 'Returned an item',
+  expenses_returned: 'Returned expenses',
+  liquidated: 'Liquidated',
 }
 
 export const FIELD_LABEL: Record<string, string> = {
@@ -76,6 +87,21 @@ export const FIELD_LABEL: Record<string, string> = {
   txn_ref: 'Transaction ref',
   disbursed_on: 'Paid on',
   notes: 'Notes',
+  total: 'Total',
+  expense_total: 'Expenses',
+  verified_total: 'Verified',
+  balance_returned: 'Balance returned',
+  balance_return_ref: 'Return reference',
+  top_up_amount: 'Top-up',
+  original_name: 'File',
+  document_id: 'Document',
+  item_id: 'Item',
+  expense_item_id: 'Item',
+  mime_type: 'File type',
+  size_bytes: 'Size (bytes)',
+  approved_total: 'Approved',
+  rejected_total: 'Rejected',
+  returned_total: 'Returned',
 }
 
 export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = {
@@ -89,6 +115,20 @@ export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = {
   LIQUIDATED: 'Liquidated',
   WITHDRAWN: 'Withdrawn',
 }
+
+export const APPROVAL_STATUS_LABEL: Record<ApprovalStatus, string> = {
+  PENDING: 'Pending',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+}
+
+export const VERIFICATION_STATUS_LABEL: Record<VerificationStatus, string> = {
+  PENDING: 'Pending',
+  VERIFIED: 'Verified',
+  RETURNED: 'Returned',
+}
+
+export const EXPENSE_CATEGORIES = ['Travel', 'Lodging', 'Meals', 'Supplies', 'Services', 'Equipment', 'Other'] as const
 
 export const REQUEST_STATUS_OPTIONS = (Object.keys(REQUEST_STATUS_LABEL) as RequestStatus[]).map((s) => ({ value: s, label: REQUEST_STATUS_LABEL[s] }))
 

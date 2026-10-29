@@ -1,7 +1,11 @@
+import { isAxiosError } from 'axios'
+
 import { api } from './client'
 import type {
   AdminUser,
+  ApprovalStatus,
   AuditEntry,
+  DocumentOut,
   Invitation,
   InviteResult,
   LedgerEntry,
@@ -19,6 +23,7 @@ import type {
   TokenResponse,
   UpdateUserResult,
   UserBrief,
+  VerificationStatus,
 } from './types'
 
 const data = <T>(p: Promise<{ data: T }>) => p.then((r) => r.data)
@@ -153,6 +158,60 @@ export const requestsApi = {
   disburse: (id: number, body: DisburseInput, idempotencyKey: string) =>
     data(api.post<RequestDetail>(`/requests/${id}/disburse`, body, { headers: { 'Idempotency-Key': idempotencyKey } })),
   return: (id: number, version: number, reason: string) => data(api.post<RequestDetail>(`/requests/${id}/return`, { version, reason })),
+}
+
+export interface ExpenseItemInput {
+  /** Present for an existing (editable) item; left out to create one. */
+  id?: number
+  description: string
+  amount: string
+  expense_date: string
+  category?: string | null
+  comment?: string | null
+  document_ids: number[]
+}
+
+export interface SaveExpensesInput {
+  version: number
+  items: ExpenseItemInput[]
+  overspend_justification?: string | null
+}
+
+/** A blob request's error body arrives as a Blob; turn it back into JSON so toApiError can read it. */
+async function readBlobError(err: unknown): Promise<never> {
+  if (isAxiosError(err) && err.response?.data instanceof Blob) {
+    try {
+      err.response.data = JSON.parse(await err.response.data.text())
+    } catch {
+      err.response.data = undefined
+    }
+  }
+  throw err
+}
+
+export const expensesApi = {
+  /** Multipart upload. Not versioned: an upload does not change the request. */
+  upload: (requestId: number, file: File, expenseItemId?: number) => {
+    const form = new FormData()
+    form.append('file', file)
+    if (expenseItemId !== undefined) form.append('expense_item_id', String(expenseItemId))
+    return data(api.post<DocumentOut>(`/requests/${requestId}/documents`, form))
+  },
+  /** Fetched through the API client (so the Bearer header is sent), returned as a Blob. */
+  download: (documentId: number) =>
+    api.get<Blob>(`/documents/${documentId}`, { responseType: 'blob' }).then((r) => r.data, readBlobError),
+  deleteDocument: (documentId: number) => api.delete(`/documents/${documentId}`).then(() => undefined),
+  save: (requestId: number, body: SaveExpensesInput) => data(api.put<RequestDetail>(`/requests/${requestId}/expenses`, body)),
+  submit: (requestId: number, version: number) => data(api.post<RequestDetail>(`/requests/${requestId}/expenses/submit`, { version })),
+  review: (requestId: number, itemId: number, version: number, decision: Exclude<ApprovalStatus, 'PENDING'>, reason?: string) =>
+    data(api.post<RequestDetail>(`/requests/${requestId}/items/${itemId}/review`, { version, decision, reason })),
+  sendBack: (requestId: number, version: number) => data(api.post<RequestDetail>(`/requests/${requestId}/expenses/send-back`, { version })),
+  approveAll: (requestId: number, version: number) => data(api.post<RequestDetail>(`/requests/${requestId}/expenses/approve`, { version })),
+  verify: (requestId: number, itemId: number, version: number, decision: Exclude<VerificationStatus, 'PENDING'>, reason?: string) =>
+    data(api.post<RequestDetail>(`/requests/${requestId}/items/${itemId}/verify`, { version, decision, reason })),
+  returnAll: (requestId: number, version: number) => data(api.post<RequestDetail>(`/requests/${requestId}/expenses/return`, { version })),
+  liquidate: (requestId: number, version: number, balance_return_ref?: string | null) =>
+    data(api.post<RequestDetail>(`/requests/${requestId}/liquidate`, { version, balance_return_ref: balance_return_ref ?? undefined })),
 }
 
 export const notificationsApi = {

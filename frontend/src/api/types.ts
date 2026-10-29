@@ -128,7 +128,23 @@ export type RequestStatus =
   | 'WITHDRAWN'
 
 /** What the current user may do next, computed by the server. The action panel renders only these. */
-export type RequestAction = 'resubmit' | 'withdraw' | 'approve' | 'reject' | 'reassign' | 'disburse' | 'return'
+export type RequestAction =
+  | 'resubmit'
+  | 'withdraw'
+  | 'approve'
+  | 'reject'
+  | 'reassign'
+  | 'disburse'
+  | 'return'
+  // Stages 4–6 (expenses, review, verification, liquidation)
+  | 'edit_expenses'
+  | 'submit_expenses'
+  | 'review_items'
+  | 'send_back_expenses'
+  | 'approve_expenses'
+  | 'verify_items'
+  | 'return_expenses'
+  | 'liquidate'
 
 export interface UserRef {
   id: number
@@ -166,6 +182,51 @@ export interface Disbursement {
   created_at: string
 }
 
+// ---------- Expenses, verification and liquidation (Phase 4: stages 4–6) ----------
+
+export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+export type VerificationStatus = 'PENDING' | 'VERIFIED' | 'RETURNED'
+
+export interface DocumentOut {
+  id: number
+  original_name: string
+  mime_type: string
+  size_bytes: number
+  expense_item_id: number | null
+  uploaded_by_name: string | null
+  created_at: string
+}
+
+export interface ExpenseItem {
+  id: number
+  description: string
+  amount: string
+  expense_date: string
+  category: string | null
+  comment: string | null
+  approval_status: ApprovalStatus
+  approval_reason: string | null
+  approved_by_name: string | null
+  approved_at: string | null
+  verification_status: VerificationStatus
+  verification_reason: string | null
+  verified_by_name: string | null
+  verified_at: string | null
+  /** Approval PENDING or REJECTED, or verification RETURNED. Approved items are locked. */
+  editable: boolean
+  documents: DocumentOut[]
+}
+
+export interface Liquidation {
+  verified_total: string
+  disbursed_total: string
+  balance_returned: string
+  balance_return_ref: string | null
+  top_up_amount: string
+  completed_by_name: string | null
+  completed_at: string
+}
+
 export interface RequestDetail extends RequestSummary {
   purpose: string
   supporting_info: string | null
@@ -175,6 +236,19 @@ export interface RequestDetail extends RequestSummary {
   version: number
   disbursements: Disbursement[]
   allowed_actions: RequestAction[]
+  overspend_justification: string | null
+  /** Σ all items. */
+  expense_total: string
+  /** Σ items with approval APPROVED. */
+  approved_total: string
+  /** Σ items with verification VERIFIED. */
+  verified_total: string
+  /** Spend above the disbursed amount, held on the project budget until liquidation. */
+  overage_reserved: string
+  expense_items: ExpenseItem[]
+  /** The requestor's uploads not yet linked to an item. */
+  unattached_documents: DocumentOut[]
+  liquidation: Liquidation | null
 }
 
 export interface HistoryEntry {

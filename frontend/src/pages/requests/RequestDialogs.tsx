@@ -261,3 +261,101 @@ export function DisburseModal({ open, request, onSubmit, onClose }: DisburseProp
     </Modal>
   )
 }
+
+// ---------- Liquidate ----------
+
+interface LiquidateProps {
+  open: boolean
+  request: RequestDetail
+  onSubmit: (balanceReturnRef: string | null) => Promise<ActionResult>
+  onClose: () => void
+}
+
+/** Closes the request: verified spend against what was paid out, with a balance return or a top-up. */
+export function LiquidateModal({ open, request, onSubmit, onClose }: LiquidateProps) {
+  const [form] = Form.useForm<{ balance_return_ref?: string }>()
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const verified = toNumber(request.verified_total)
+  const disbursed = toNumber(request.disbursed_total)
+  const balance = disbursed - verified
+  const underspent = balance > 0
+  const overspent = balance < 0
+
+  useEffect(() => {
+    if (open) {
+      form.resetFields()
+      setError(null)
+    }
+  }, [open, form])
+
+  const submit = async (v: { balance_return_ref?: string }) => {
+    setBusy(true)
+    setError(null)
+    const res = await onSubmit(underspent ? (v.balance_return_ref ?? '').trim() : null)
+    setBusy(false)
+    if (res.ok || !res.error) return
+    const e = res.error
+    const fields = fieldErrors(e)
+    if (fields.balance_return_ref) form.setFields([{ name: 'balance_return_ref', errors: [fields.balance_return_ref] }])
+    else if (underspent && e.status === 422 && /ref/i.test(e.message)) form.setFields([{ name: 'balance_return_ref', errors: [e.message] }])
+    else setError(e.message)
+  }
+
+  const outcome = underspent
+    ? { label: 'Balance to be returned', value: money(balance), note: `${request.requestor.full_name} returns the unspent amount to the project.` }
+    : overspent
+      ? { label: 'Top-up to pay', value: money(-balance), note: `Paid to ${request.requestor.full_name} from the overspend already reserved on ${request.project.code}.` }
+      : { label: 'Settlement', value: money(0), note: 'Spend matches the amount paid out. Nothing to return or top up.' }
+
+  return (
+    <Modal
+      open={open}
+      title={`Liquidate ${request.ref_no}`}
+      okText="Liquidate request"
+      onOk={() => form.submit()}
+      onCancel={onClose}
+      confirmLoading={busy}
+      forceRender
+      width={540}
+    >
+      <p className="muted" style={{ marginTop: 0 }}>
+        Every expense item is verified. Liquidating closes the request and settles {request.project.code}'s budget. This can't be undone.
+      </p>
+      {error && <Alert type="error" showIcon title={error} style={{ marginBottom: 12 }} />}
+      <div className="settle-grid" style={{ marginBottom: underspent ? 16 : 0 }}>
+        <div className="amount-readonly">
+          <div className="figure-label">Verified expenses</div>
+          <div className="figure-value">{money(verified)}</div>
+          <div className="figure-note">{request.expense_items.length} item{request.expense_items.length === 1 ? '' : 's'}</div>
+        </div>
+        <div className="amount-readonly">
+          <div className="figure-label">Disbursed</div>
+          <div className="figure-value">{money(disbursed)}</div>
+          <div className="figure-note">Paid out on this request</div>
+        </div>
+        <div className="amount-readonly" style={{ gridColumn: '1 / -1' }}>
+          <div className="figure-label">{outcome.label}</div>
+          <div className="figure-value" style={{ color: overspent ? 'var(--warning)' : undefined }}>{outcome.value}</div>
+          <div className="figure-note">{outcome.note}</div>
+        </div>
+      </div>
+      <Form form={form} layout="vertical" requiredMark={false} onFinish={submit}>
+        {underspent && (
+          <Form.Item
+            name="balance_return_ref"
+            label="Balance-return reference"
+            extra="The bank or UPI reference of the returned balance."
+            style={{ marginBottom: 0 }}
+            rules={[
+              { required: true, whitespace: true, message: 'Enter the reference of the returned balance' },
+              { max: 100, message: 'Keep it under 100 characters' },
+            ]}
+          >
+            <Input placeholder="e.g. NEFT-90412" className="mono" maxLength={100} />
+          </Form.Item>
+        )}
+      </Form>
+    </Modal>
+  )
+}

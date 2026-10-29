@@ -11,20 +11,30 @@ import { PageHeader } from '../../components/PageHeader'
 import { Panel } from '../../components/Panel'
 import { StageTracker } from '../../components/StageTracker'
 import { EmptyState, ErrorState, NotFound } from '../../components/States'
-import { actionLabel, statusLabel } from '../../lib/audit'
+import { actionLabel, expenseSummary, statusLabel } from '../../lib/audit'
 import { formatDate, formatDateTime, money, shortWhen, toNumber } from '../../lib/format'
 import { waitingFor } from '../../lib/labels'
 import { afterRequestChange } from './cache'
+import { EXPENSE_STAGES, plural } from './ExpenseParts'
+import { ExpensesPanel, LiquidationSummary } from './ExpensesPanel'
 import { DisburseModal, ReasonModal, ReassignModal, type ActionResult, type DisburseBody } from './RequestDialogs'
 
 type Dialog = 'reject' | 'return' | 'reassign' | 'disburse' | null
 
+/** Actions with a button in the Next step panel. Expense actions live in the Expenses section. */
+type PanelAction = Extract<RequestAction, 'approve' | 'disburse' | 'resubmit' | 'reject' | 'return' | 'reassign' | 'withdraw'>
+
 // Primary actions first, then the ones that send the request back or elsewhere.
-const ACTION_ORDER: RequestAction[] = ['approve', 'disburse', 'resubmit', 'reject', 'return', 'reassign', 'withdraw']
+const ACTION_ORDER: PanelAction[] = ['approve', 'disburse', 'resubmit', 'reject', 'return', 'reassign', 'withdraw']
+
+const EXPENSE_ACTIONS: RequestAction[] = ['edit_expenses', 'submit_expenses', 'review_items', 'send_back_expenses', 'approve_expenses', 'verify_items', 'return_expenses', 'liquidate']
 
 function Figures({ r }: { r: RequestDetail }) {
   const payments = r.disbursements.length
-  const figures = [
+  const items = r.expense_items
+  const overage = toNumber(r.overage_reserved)
+  const verifiedCount = items.filter((i) => i.verification_status === 'VERIFIED').length
+  const figures: { label: string; value: string; note: string; color?: string }[] = [
     { label: 'Requested', value: money(r.amount_requested), note: `Raised ${formatDate(r.created_at)}` },
     { label: 'Approved', value: r.amount_approved ? money(r.amount_approved) : '—', note: r.amount_approved ? 'Approved amount' : 'Not approved yet' },
     {
@@ -33,10 +43,27 @@ function Figures({ r }: { r: RequestDetail }) {
       color: 'var(--budget-outstanding)',
       note: payments ? `${payments} payment${payments === 1 ? '' : 's'}` : 'Nothing paid yet',
     },
-    { label: 'Reserved', value: money(r.reserved_amount), color: 'var(--budget-reserved)', note: 'Held on the project budget' },
+    {
+      label: 'Reserved',
+      value: money(toNumber(r.reserved_amount) + overage),
+      color: 'var(--budget-reserved)',
+      note: overage > 0 ? 'Overspend held for the top-up' : 'Held on the project budget',
+    },
   ]
+  // From Stage 4, once there are items: what was spent and how much of it Finance has verified.
+  if (items.length) {
+    figures.push(
+      { label: 'Expenses', value: money(r.expense_total), note: plural(items.length, 'item') },
+      {
+        label: 'Verified',
+        value: money(r.verified_total),
+        color: 'var(--budget-liquidated)',
+        note: verifiedCount ? `${verifiedCount} of ${items.length} items` : 'Not verified yet',
+      },
+    )
+  }
   return (
-    <div className="figures" style={{ '--cols': 4 } as CSSProperties}>
+    <div className="figures" style={{ '--cols': figures.length } as CSSProperties}>
       {figures.map((f) => (
         <div className="figure" key={f.label}>
           <div className="figure-label">
@@ -121,6 +148,8 @@ function historyDetail(h: HistoryEntry): string {
     if (text('amount')) parts.push(money(text('amount')))
     if (text('txn_ref')) parts.push(`ref ${text('txn_ref')}`)
   }
+  const expense = expenseSummary(h.action, s)
+  if (expense) parts.push(expense)
   if (h.from_status && h.to_status && h.from_status !== h.to_status) parts.push(`${statusLabel(h.from_status)} → ${statusLabel(h.to_status)}`)
   else if (!h.from_status && h.to_status) parts.push(statusLabel(h.to_status))
   return parts.join(' · ')
@@ -210,6 +239,9 @@ export default function RequestDetailPage() {
   const r = request.data
   const v = r.version
   const actions = ACTION_ORDER.filter((a) => r.allowed_actions.includes(a))
+  const can = (a: RequestAction) => r.allowed_actions.includes(a)
+  const expenseTurn = EXPENSE_ACTIONS.some(can)
+  const showExpenses = EXPENSE_STAGES.includes(r.status) || r.expense_items.length > 0
   const names = { requestor: r.requestor.full_name, approver: r.approver.full_name }
   const paidBefore = toNumber(r.disbursed_total)
   const skipsDisbursement = paidBefore >= toNumber(r.amount_requested)
@@ -227,7 +259,7 @@ export default function RequestDetailPage() {
       },
     })
 
-  const buttons: Record<RequestAction, () => void> = {
+  const buttons: Record<PanelAction, () => void> = {
     approve: () =>
       confirmAction({
         title: `Approve ${r.ref_no}?`,
@@ -254,7 +286,7 @@ export default function RequestDetailPage() {
       }),
   }
 
-  const BUTTON: Record<RequestAction, { label: string; primary?: boolean; danger?: boolean }> = {
+  const BUTTON: Record<PanelAction, { label: string; primary?: boolean; danger?: boolean }> = {
     approve: { label: 'Approve', primary: true },
     disburse: { label: `Disburse ${money(r.disbursable_amount)}`, primary: true },
     resubmit: { label: 'Correct and resubmit', primary: true },
@@ -264,7 +296,42 @@ export default function RequestDetailPage() {
     withdraw: { label: 'Withdraw', danger: true },
   }
 
-  const yourTurn = actions.includes('approve')
+  const rejectedItems = r.expense_items.filter((i) => i.approval_status === 'REJECTED').length
+  const returnedItems = r.expense_items.filter((i) => i.verification_status === 'RETURNED').length
+  const expenseStep = can('edit_expenses')
+    ? r.status === 'EXPENSE_RETURNED'
+      ? 'Expenses returned to you. Correct the rejected or returned items under Expenses, then submit them again.'
+      : 'Add your expenses under Expenses, each with a receipt or invoice, then submit them for review.'
+    : can('approve_expenses')
+      ? 'Every item is approved. Approve the expenses to send them to Finance for verification.'
+      : can('send_back_expenses')
+        ? `Every item is reviewed and ${plural(rejectedItems, 'item')} rejected. Send the expenses back to ${r.requestor.full_name} for correction.`
+        : can('review_items')
+          ? 'Waiting for your review. Approve or reject each expense item under Expenses.'
+          : can('liquidate')
+            ? 'Every item is verified. Liquidate the request to settle the budget and close it.'
+            : can('return_expenses')
+              ? `Every item is checked and ${plural(returnedItems, 'item')} returned. Return the expenses to ${r.requestor.full_name} for correction.`
+              : can('verify_items')
+                ? 'Waiting for verification. Verify or return each expense item under Expenses.'
+                : null
+
+  // Shown above the Expenses section from Stage 4 on (where the buttons are), else in Next step.
+  const staleAlert = (style: CSSProperties) =>
+    stale && (
+      <Alert
+        type="warning"
+        showIcon
+        style={style}
+        title="This request changed"
+        description="Someone else acted on it while you had it open, so your action was not applied. Reload to see where it stands now."
+        action={<Button size="small" onClick={reload} loading={request.isFetching}>Reload</Button>}
+      />
+    )
+
+  const yourTurn = expenseStep
+    ? expenseStep
+    : actions.includes('approve')
     ? 'Waiting for your decision. Approve it, or reject it with a reason.'
     : actions.includes('resubmit')
       ? actions.includes('withdraw')
@@ -298,6 +365,9 @@ export default function RequestDetailPage() {
       <Panel flush className="panel-gap">
         <Figures r={r} />
       </Panel>
+      {showExpenses && staleAlert({ marginTop: 16 })}
+      <LiquidationSummary r={r} />
+      {showExpenses && <ExpensesPanel r={r} run={perform} disabled={stale || write.isPending} />}
 
       <div className="detail-grid">
         <div>
@@ -310,16 +380,7 @@ export default function RequestDetailPage() {
         </div>
         <div>
           <Panel title="Next step">
-            {stale && (
-              <Alert
-                type="warning"
-                showIcon
-                style={{ marginBottom: 12 }}
-                title="This request changed"
-                description="Someone else acted on it while you had it open, so your action was not applied. Reload to see where it stands now."
-                action={<Button size="small" onClick={reload} loading={request.isFetching}>Reload</Button>}
-              />
-            )}
+            {!showExpenses && staleAlert({ marginBottom: 12 })}
             <div>{yourTurn}</div>
             {actions.length > 0 ? (
               <div className="action-buttons" style={{ marginTop: 12 }}>
@@ -329,7 +390,7 @@ export default function RequestDetailPage() {
                   </Button>
                 ))}
               </div>
-            ) : (
+            ) : expenseTurn ? null : (
               <div className="cell-sub" style={{ marginTop: 6 }}>Nothing for you to do on this request right now.</div>
             )}
           </Panel>

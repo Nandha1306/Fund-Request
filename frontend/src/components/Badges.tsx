@@ -1,7 +1,7 @@
 import { Tag } from 'antd'
 
-import type { LedgerEntryType, ProjectStatus, RequestStatus, Role } from '../api/types'
-import { LEDGER_LABEL, REQUEST_STATUS_LABEL, ROLE_LABEL } from '../lib/labels'
+import type { ApprovalStatus, LedgerEntryType, ProjectStatus, RequestStatus, Role, VerificationStatus } from '../api/types'
+import { APPROVAL_STATUS_LABEL, LEDGER_LABEL, REQUEST_STATUS_LABEL, ROLE_LABEL, VERIFICATION_STATUS_LABEL } from '../lib/labels'
 import { palette } from '../theme'
 
 function Status({ color, label }: { color: string; label: string }) {
@@ -66,6 +66,27 @@ const REQUEST_COLOR: Record<RequestStatus, string> = {
 
 export function RequestStatusBadge({ status }: { status: RequestStatus }) {
   return <Status color={REQUEST_COLOR[status] ?? palette.subtle} label={REQUEST_STATUS_LABEL[status] ?? status} />
+}
+
+// Expense items: amber while a decision is due, green once accepted, red when sent back.
+const APPROVAL_COLOR: Record<ApprovalStatus, string> = {
+  PENDING: palette.warning,
+  APPROVED: palette.success,
+  REJECTED: palette.danger,
+}
+
+const VERIFICATION_COLOR: Record<VerificationStatus, string> = {
+  PENDING: palette.warning,
+  VERIFIED: palette.success,
+  RETURNED: palette.danger,
+}
+
+export function ApprovalStatusBadge({ status }: { status: ApprovalStatus }) {
+  return <Status color={APPROVAL_COLOR[status]} label={APPROVAL_STATUS_LABEL[status]} />
+}
+
+export function VerificationStatusBadge({ status }: { status: VerificationStatus }) {
+  return <Status color={VERIFICATION_COLOR[status]} label={VERIFICATION_STATUS_LABEL[status]} />
 }
 
 export function CodePill({ children }: { children: string }) {
