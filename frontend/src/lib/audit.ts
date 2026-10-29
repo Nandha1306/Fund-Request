@@ -1,6 +1,6 @@
-import type { AuditEntry, Role } from '../api/types'
+import type { AuditEntry, RequestStatus, Role } from '../api/types'
 import { formatDateTime, money } from './format'
-import { ACTION_LABEL, ENTITY_LABEL, FIELD_LABEL, ROLE_LABEL } from './labels'
+import { ACTION_LABEL, ENTITY_LABEL, FIELD_LABEL, REQUEST_STATUS_LABEL, ROLE_LABEL } from './labels'
 
 export interface FieldChange {
   field: string
@@ -9,11 +9,17 @@ export interface FieldChange {
   after: string
 }
 
+const MONEY_FIELDS = new Set(['allocated', 'amount', 'amount_requested', 'amount_approved', 'reserved_amount', 'disbursed_total'])
+
 function show(field: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—'
-  if (field === 'allocated') return money(String(value))
+  if (MONEY_FIELDS.has(field)) return money(String(value))
   if (field === 'role') return ROLE_LABEL[value as Role] ?? String(value)
-  if (field === 'status') return value === 'ACTIVE' ? 'Active' : value === 'INACTIVE' ? 'Inactive' : String(value)
+  if (field === 'status') {
+    if (value === 'ACTIVE') return 'Active'
+    if (value === 'INACTIVE') return 'Inactive'
+    return REQUEST_STATUS_LABEL[value as RequestStatus] ?? String(value)
+  }
   if (field === 'expires_at') return formatDateTime(String(value))
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
   return String(value)
@@ -42,7 +48,8 @@ export function memberChanges(entry: AuditEntry): { added: string[]; removed: st
   return { added: describe(s.added_names, s.added), removed: describe(s.removed_names, s.removed) }
 }
 
-export const actionLabel = (entry: AuditEntry) => ACTION_LABEL[entry.action] ?? entry.action
+export const actionLabel = (entry: Pick<AuditEntry, 'action'>) => ACTION_LABEL[entry.action] ?? entry.action
+export const statusLabel = (status: string) => show('status', status)
 export const entityLabel = (entry: AuditEntry) => ENTITY_LABEL[entry.entity] ?? entry.entity
 
 /** One readable line for lists ("Allocation ₹50,000.00 → ₹40,000.00", "2 added, 1 removed"). */
@@ -59,4 +66,11 @@ export function summarize(entry: AuditEntry): string {
   if (entry.action === 'invited' && snap?.email) return `${snap.email} as ${show('role', snap.role)}`
   if (entry.action === 'invitation_accepted' && snap?.email) return `${snap.email} joined as ${show('role', snap.role)}`
   return ''
+}
+
+/** Where an audit row's subject lives in the app, when it has a page of its own. */
+export function subjectLink(entry: Pick<AuditEntry, 'entity' | 'entity_id'>): string | null {
+  if (entry.entity === 'projects') return `/projects/${entry.entity_id}`
+  if (entry.entity === 'fund_requests') return `/requests/${entry.entity_id}`
+  return null
 }

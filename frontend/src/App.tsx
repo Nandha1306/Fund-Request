@@ -11,6 +11,9 @@ const AcceptInvitePage = lazy(() => import('./pages/AcceptInvitePage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const ProjectsPage = lazy(() => import('./pages/projects/ProjectsPage'))
 const ProjectDetailPage = lazy(() => import('./pages/projects/ProjectDetailPage'))
+const RequestsPage = lazy(() => import('./pages/requests/RequestsPage'))
+const RequestFormPage = lazy(() => import('./pages/requests/RequestFormPage'))
+const RequestDetailPage = lazy(() => import('./pages/requests/RequestDetailPage'))
 const UsersPage = lazy(() => import('./pages/users/UsersPage'))
 const AuditPage = lazy(() => import('./pages/AuditPage'))
 
@@ -23,6 +26,10 @@ export default function App() {
         <Route element={<RequireAuth />}>
           <Route element={<AppLayout />}>
             <Route index element={<DashboardPage />} />
+            <Route path="requests" element={<RequestsPage />} />
+            <Route path="requests/new" element={<RequirePermission permission="request.create"><RequestFormPage /></RequirePermission>} />
+            <Route path="requests/:id" element={<RequestDetailPage />} />
+            <Route path="requests/:id/resubmit" element={<RequirePermission permission="request.resubmit"><RequestFormPage /></RequirePermission>} />
             <Route path="projects" element={<ProjectsPage />} />
             <Route path="projects/:id" element={<ProjectDetailPage />} />
             <Route path="users" element={<RequirePermission permission="user.manage"><UsersPage /></RequirePermission>} />

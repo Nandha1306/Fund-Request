@@ -1,9 +1,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Skeleton, Table, Tabs } from 'antd'
 import { useState, type JSX } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 
-import { auditApi, projectsApi } from '../../api/endpoints'
+import { auditApi, projectsApi, requestsApi } from '../../api/endpoints'
 import { toApiError } from '../../api/errors'
 import type { AuditEntry, LedgerEntry, Member, Project } from '../../api/types'
 import { useAuth } from '../../auth/AuthProvider'
@@ -14,11 +14,42 @@ import { PageHeader } from '../../components/PageHeader'
 import { Panel } from '../../components/Panel'
 import { EmptyState, ErrorState, NotFound } from '../../components/States'
 import { formatDate, formatDateTime, money, signedMoney } from '../../lib/format'
+import { RequestTable } from '../requests/RequestTable'
 import { MembersModal } from './MembersModal'
 import { ProjectFormModal } from './ProjectFormModal'
 
 // The budget engine tags overspend reservations with the internal note "overage".
 const ledgerNote = (note: string | null) => (note === 'overage' ? 'For overspend' : (note ?? ''))
+
+function RequestsTab({ project }: { project: Project }) {
+  const { can } = useAuth()
+  const navigate = useNavigate()
+  const [page, setPage] = useState(1)
+  const query = { project_id: project.id, page, size: 20 }
+  const requests = useQuery({ queryKey: ['requests', query], queryFn: () => requestsApi.list(query), placeholderData: keepPreviousData })
+  const canRaise = can('request.create') && project.status === 'ACTIVE'
+  const raise = () => navigate(`/requests/new?project=${project.id}`)
+  return (
+    <>
+      <div className="toolbar">
+        <span className="muted">Fund requests raised against this project, newest first.</span>
+        <span className="grow" />
+        {canRaise && <Button onClick={raise}>New request</Button>}
+      </div>
+      {requests.isError ? (
+        <ErrorState error={requests.error} onRetry={() => requests.refetch()} />
+      ) : (
+        <RequestTable
+          hideProject
+          requests={requests.data?.items}
+          loading={requests.isFetching && !requests.data}
+          emptyText={<EmptyState title="No requests yet" description={canRaise ? 'Raise the first fund request against this project.' : 'Requests raised against this project will appear here.'} />}
+          pagination={{ current: page, pageSize: 20, total: requests.data?.total, onChange: setPage, hideOnSinglePage: true, showSizeChanger: false }}
+        />
+      )}
+    </>
+  )
+}
 
 function MembersTab({ project }: { project: Project }) {
   const [editing, setEditing] = useState(false)
@@ -161,6 +192,7 @@ export default function ProjectDetailPage() {
     })
 
   const tabs = [
+    { key: 'requests', label: 'Requests', children: <RequestsTab project={p} /> },
     can('project.members') && { key: 'members', label: 'Members', children: <MembersTab project={p} /> },
     manager && { key: 'ledger', label: 'Ledger', children: <LedgerTab project={p} /> },
     can('audit.view') && { key: 'activity', label: 'Activity', children: <ActivityTab project={p} /> },

@@ -9,7 +9,7 @@ import type { AuditEntry } from '../api/types'
 import { PageHeader } from '../components/PageHeader'
 import { Panel } from '../components/Panel'
 import { EmptyState, ErrorState } from '../components/States'
-import { actionLabel, entityLabel, fieldChanges, memberChanges, snapshotFields, summarize } from '../lib/audit'
+import { actionLabel, entityLabel, fieldChanges, memberChanges, snapshotFields, subjectLink, summarize } from '../lib/audit'
 import { formatDateTime } from '../lib/format'
 import { ACTION_LABEL, ENTITY_LABEL } from '../lib/labels'
 
@@ -89,7 +89,7 @@ export default function AuditPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Audit log" description="Every change to projects, users and invitations: who made it, when, and what changed." />
+      <PageHeader title="Audit log" description="Every change to requests, projects, users and invitations: who made it, when, and what changed." />
       <Panel flush>
         <div className="toolbar">
           <Select allowClear placeholder="All records" style={{ width: 160 }} value={entity} onChange={reset(setEntity)} options={Object.entries(ENTITY_LABEL).map(([value, label]) => ({ value, label }))} />
@@ -116,10 +116,11 @@ export default function AuditPage() {
                 width: 380,
                 render: (_, e) => {
                   const label = e.subject_label ?? `${entityLabel(e)} #${e.entity_id}`
+                  const link = subjectLink(e)
                   return (
                     <div>
                       <span className="subtle">{entityLabel(e)} · </span>
-                      {e.entity === 'projects' ? <Link to={`/projects/${e.entity_id}`} onClick={(ev) => ev.stopPropagation()}>{label}</Link> : label}
+                      {link ? <Link to={link} onClick={(ev) => ev.stopPropagation()}>{label}</Link> : label}
                     </div>
                   )
                 },

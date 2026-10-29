@@ -18,6 +18,9 @@
   --budget-outstanding: #5b8ec7;
   --budget-reserved: #d4a03a;
   --budget-available: #e6eaef;
+  --success: #2f7d55;
+  --warning: #b7791f;
+  --danger: #b83232;
 }
 
 * { box-sizing: border-box; }
@@ -68,6 +71,7 @@ body { margin: 0; background: var(--canvas); color: var(--ink); -webkit-font-smo
 .account-name { color: #e8edf2; font-size: 12.5px; font-weight: 500; line-height: 1.25; }
 .account-role { color: #7d8896; font-size: 11.5px; }
 .account-text { flex: 1; min-width: 0; }
+.account-tools { display: flex; align-items: center; gap: 2px; flex: none; }
 .account-text > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .main { flex: 1; min-width: 0; overflow-y: auto; }
@@ -143,6 +147,51 @@ body { margin: 0; background: var(--canvas); color: var(--ink); -webkit-font-smo
 
 .link-box { display: flex; gap: 8px; }
 .link-box input { font-family: Consolas, "SF Mono", Menlo, monospace; font-size: 12px; }
+
+/* ---------- Fund requests ---------- */
+.stages { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
+.stage { display: flex; flex-direction: column; gap: 3px; padding: 12px 16px 12px; border-right: 1px solid var(--border-soft); min-width: 0; }
+.stage:last-child { border-right: none; }
+.stage-bar { height: 3px; border-radius: 2px; background: var(--border-soft); margin-bottom: 6px; }
+.stage-label { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--subtle); white-space: nowrap; }
+.stage-num {
+  width: 18px; height: 18px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  font-size: 10.5px; font-weight: 600; border: 1px solid var(--border); color: var(--subtle); background: var(--surface);
+}
+.stage-note { font-size: 11.5px; color: var(--subtle); padding-left: 25px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stage.done .stage-bar { background: var(--primary); }
+.stage.done .stage-label { color: var(--ink); }
+.stage.done .stage-num { background: var(--primary); border-color: var(--primary); color: #fff; }
+.stage.current .stage-bar { background: var(--primary); }
+.stage.current .stage-label { color: var(--ink); font-weight: 600; }
+.stage.current .stage-num { border-color: var(--primary); color: var(--primary); }
+.stage.current .stage-note { color: var(--primary); }
+.stage.returned .stage-bar { background: var(--danger); }
+.stage.returned .stage-label { color: var(--ink); font-weight: 600; }
+.stage.returned .stage-num { border-color: var(--danger); color: var(--danger); }
+.stage.returned .stage-note { color: var(--danger); }
+.stage.closed .stage-bar { background: var(--budget-available); }
+.stage.closed[aria-current="step"] .stage-label { color: var(--muted); font-weight: 600; }
+.stage.closed[aria-current="step"] .stage-bar { background: #a4adb9; }
+
+.detail-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); gap: 16px; margin-top: 16px; align-items: start; }
+.prewrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.reason { margin-top: 4px; padding: 6px 10px; border-left: 2px solid var(--border); background: #f7f8fa; border-radius: 0 4px 4px 0; font-size: 12.5px; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.action-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.amount-readonly { padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: #f7f8fa; }
+.amount-readonly .figure-value { margin-top: 0; }
+
+/* Notification bell (sidebar account area) and its popover list. */
+.notif-list { width: 360px; }
+.notif-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); }
+.notif-items { list-style: none; margin: 0; padding: 0; max-height: 380px; overflow-y: auto; }
+.notif-items li { display: flex; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); cursor: pointer; }
+.notif-items li:last-child { border-bottom: none; }
+.notif-items li:hover { background: #f6f9fc; }
+.notif-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; margin-top: 6px; background: transparent; }
+.notif-items li.unread .notif-dot { background: var(--primary); }
+.notif-items li.unread .notif-text { font-weight: 500; }
+.notif-text { font-size: 12.5px; line-height: 1.45; }
 
 /* ---------- Sign-in screens ---------- */
 .auth { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 32px 16px; }

@@ -113,3 +113,86 @@ export interface UpdateUserResult {
   user: AdminUser
   needs_reassignment: string[]
 }
+
+// ---------- Fund requests (Phase 3: stages 1–3) ----------
+
+export type RequestStatus =
+  | 'PENDING_APPROVAL'
+  | 'RETURNED_FOR_CORRECTION'
+  | 'PENDING_DISBURSEMENT'
+  | 'PENDING_EXPENSE_SUBMISSION'
+  | 'PENDING_EXPENSE_APPROVAL'
+  | 'EXPENSE_RETURNED'
+  | 'PENDING_VERIFICATION'
+  | 'LIQUIDATED'
+  | 'WITHDRAWN'
+
+/** What the current user may do next, computed by the server. The action panel renders only these. */
+export type RequestAction = 'resubmit' | 'withdraw' | 'approve' | 'reject' | 'reassign' | 'disburse' | 'return'
+
+export interface UserRef {
+  id: number
+  full_name: string
+  email: string
+}
+
+export interface ProjectRef {
+  id: number
+  code: string
+  name: string
+  status: ProjectStatus
+}
+
+export interface RequestSummary {
+  id: number
+  ref_no: string
+  status: RequestStatus
+  project: ProjectRef
+  requestor: UserRef
+  approver: UserRef
+  amount_requested: string
+  amount_approved: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Disbursement {
+  id: number
+  amount: string
+  txn_ref: string
+  disbursed_on: string
+  notes: string | null
+  created_by_name: string | null
+  created_at: string
+}
+
+export interface RequestDetail extends RequestSummary {
+  purpose: string
+  supporting_info: string | null
+  reserved_amount: string
+  disbursed_total: string
+  disbursable_amount: string
+  version: number
+  disbursements: Disbursement[]
+  allowed_actions: RequestAction[]
+}
+
+export interface HistoryEntry {
+  id: number
+  action: string
+  from_status: string | null
+  to_status: string | null
+  reason: string | null
+  actor_name: string | null
+  snapshot: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface Notification {
+  id: number
+  type: string
+  message: string
+  request_id: number | null
+  read_at: string | null
+  created_at: string
+}

@@ -6,10 +6,15 @@ import type {
   InviteResult,
   LedgerEntry,
   Me,
+  HistoryEntry,
   Member,
+  Notification,
   Page,
   Project,
   ProjectStatus,
+  RequestDetail,
+  RequestStatus,
+  RequestSummary,
   Role,
   TokenResponse,
   UpdateUserResult,
@@ -76,6 +81,8 @@ export const usersApi = {
   invite: (email: string, role: Role) => data(api.post<InviteResult>('/users/invite', { email, role })),
   invitations: () => data(api.get<Invitation[]>('/users/invitations')),
   requestors: () => data(api.get<UserBrief[]>('/users/requestors')),
+  /** Active approvers, without the caller (no self-approval). */
+  approvers: () => data(api.get<UserBrief[]>('/users/approvers')),
 }
 
 export interface AuditQuery {
@@ -90,4 +97,68 @@ export interface AuditQuery {
 
 export const auditApi = {
   list: (q: AuditQuery) => data(api.get<Page<AuditEntry>>('/audit', { params: params(q) })),
+}
+
+export interface RequestQuery {
+  page?: number
+  size?: number
+  status?: RequestStatus[]
+  project_id?: number
+  requestor_id?: number
+  approver_id?: number
+  date_from?: string
+  date_to?: string
+  q?: string
+  /** 'action': only requests waiting on the caller. */
+  mine?: 'action'
+}
+
+export interface RequestInput {
+  project_id: number
+  approver_id: number
+  amount_requested: string
+  purpose: string
+  supporting_info?: string | null
+}
+
+export interface ResubmitInput {
+  version: number
+  approver_id: number
+  amount_requested: string
+  purpose: string
+  supporting_info?: string | null
+}
+
+export interface DisburseInput {
+  version: number
+  txn_ref: string
+  disbursed_on: string
+  notes?: string | null
+}
+
+export const requestsApi = {
+  // `status` is repeatable: status=A&status=B (no brackets), as FastAPI expects.
+  list: (q: RequestQuery) =>
+    data(api.get<Page<RequestSummary>>('/requests', { params: params(q), paramsSerializer: { indexes: null } })),
+  get: (id: number) => data(api.get<RequestDetail>(`/requests/${id}`)),
+  history: (id: number) => data(api.get<HistoryEntry[]>(`/requests/${id}/history`)),
+  create: (body: RequestInput) => data(api.post<RequestDetail>('/requests', body)),
+  resubmit: (id: number, body: ResubmitInput) => data(api.put<RequestDetail>(`/requests/${id}`, body)),
+  approve: (id: number, version: number) => data(api.post<RequestDetail>(`/requests/${id}/approve`, { version })),
+  reject: (id: number, version: number, reason: string) => data(api.post<RequestDetail>(`/requests/${id}/reject`, { version, reason })),
+  reassign: (id: number, version: number, approver_id: number) =>
+    data(api.post<RequestDetail>(`/requests/${id}/reassign`, { version, approver_id })),
+  withdraw: (id: number, version: number) => data(api.post<RequestDetail>(`/requests/${id}/withdraw`, { version })),
+  /** `idempotencyKey` is created once per disburse dialog, so a retry can never pay twice. */
+  disburse: (id: number, body: DisburseInput, idempotencyKey: string) =>
+    data(api.post<RequestDetail>(`/requests/${id}/disburse`, body, { headers: { 'Idempotency-Key': idempotencyKey } })),
+  return: (id: number, version: number, reason: string) => data(api.post<RequestDetail>(`/requests/${id}/return`, { version, reason })),
+}
+
+export const notificationsApi = {
+  list: (q: { unread_only?: boolean; page?: number; size?: number }) =>
+    data(api.get<Page<Notification>>('/notifications', { params: params(q) })),
+  unreadCount: () => data(api.get<{ count: number }>('/notifications/unread-count')),
+  markRead: (id: number) => api.post(`/notifications/${id}/read`).then(() => undefined),
+  markAllRead: () => api.post('/notifications/read-all').then(() => undefined),
 }

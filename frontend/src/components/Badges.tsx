@@ -1,7 +1,7 @@
 import { Tag } from 'antd'
 
-import type { LedgerEntryType, ProjectStatus, Role } from '../api/types'
-import { LEDGER_LABEL, ROLE_LABEL } from '../lib/labels'
+import type { LedgerEntryType, ProjectStatus, RequestStatus, Role } from '../api/types'
+import { LEDGER_LABEL, REQUEST_STATUS_LABEL, ROLE_LABEL } from '../lib/labels'
 import { palette } from '../theme'
 
 function Status({ color, label }: { color: string; label: string }) {
@@ -49,6 +49,23 @@ const LEDGER_COLOR: Partial<Record<LedgerEntryType, string>> = {
 
 export function LedgerTypeBadge({ type }: { type: LedgerEntryType }) {
   return <Status color={LEDGER_COLOR[type] ?? palette.subtle} label={LEDGER_LABEL[type]} />
+}
+
+// Amber: someone has to decide; blue: money is moving; red: back with the requestor; green/grey: closed.
+const REQUEST_COLOR: Record<RequestStatus, string> = {
+  PENDING_APPROVAL: palette.warning,
+  RETURNED_FOR_CORRECTION: palette.danger,
+  PENDING_DISBURSEMENT: palette.primary,
+  PENDING_EXPENSE_SUBMISSION: palette.budget.outstanding,
+  PENDING_EXPENSE_APPROVAL: palette.warning,
+  EXPENSE_RETURNED: palette.danger,
+  PENDING_VERIFICATION: palette.primary,
+  LIQUIDATED: palette.success,
+  WITHDRAWN: '#a4adb9',
+}
+
+export function RequestStatusBadge({ status }: { status: RequestStatus }) {
+  return <Status color={REQUEST_COLOR[status] ?? palette.subtle} label={REQUEST_STATUS_LABEL[status] ?? status} />
 }
 
 export function CodePill({ children }: { children: string }) {

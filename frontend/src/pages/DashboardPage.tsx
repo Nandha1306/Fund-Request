@@ -3,7 +3,7 @@ import { Button, Skeleton, Table } from 'antd'
 import type { CSSProperties } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { auditApi, projectsApi, usersApi } from '../api/endpoints'
+import { auditApi, projectsApi, requestsApi, usersApi } from '../api/endpoints'
 import type { Project } from '../api/types'
 import { useAuth, useCurrentUser } from '../auth/AuthProvider'
 import { ActivityList } from '../components/ActivityList'
@@ -13,6 +13,7 @@ import { PageHeader } from '../components/PageHeader'
 import { Panel } from '../components/Panel'
 import { EmptyState, ErrorState } from '../components/States'
 import { money, toNumber } from '../lib/format'
+import { RequestTable } from './requests/RequestTable'
 
 function sumBuckets(projects: Project[]) {
   const total = (k: keyof Project) => projects.reduce((s, p) => s + toNumber(p[k] as string), 0).toFixed(2)
@@ -54,6 +55,35 @@ function ProjectRows({ projects, loading }: { projects: Project[]; loading: bool
   )
 }
 
+const WAITING_ROWS = 6
+
+/** Requests whose next step is the current user's, for every role (mine=action). */
+function WaitingPanel() {
+  const waiting = useQuery({
+    queryKey: ['requests', { mine: 'action', size: WAITING_ROWS }],
+    queryFn: () => requestsApi.list({ mine: 'action', size: WAITING_ROWS }),
+  })
+  const total = waiting.data?.total ?? 0
+  return (
+    <Panel
+      title="Waiting on you"
+      subtitle="Requests whose next step is yours"
+      extra={<Link to="/requests">{total > WAITING_ROWS ? `View all ${total}` : 'All requests'}</Link>}
+      flush
+    >
+      {waiting.isError ? (
+        <ErrorState error={waiting.error} onRetry={() => waiting.refetch()} />
+      ) : (
+        <RequestTable
+          requests={waiting.data?.items}
+          loading={waiting.isPending}
+          emptyText={<EmptyState title="Nothing is waiting on you" description="Requests that need your approval, payment or correction will appear here." />}
+        />
+      )}
+    </Panel>
+  )
+}
+
 function ManagerDashboard() {
   const { can } = useAuth()
   const projects = useQuery({ queryKey: ['projects', { size: 100 }], queryFn: () => projectsApi.list({ size: 100 }) })
@@ -72,6 +102,7 @@ function ManagerDashboard() {
         description={projects.data ? `Budget position across ${active.length} active project${active.length === 1 ? '' : 's'}` : 'Budget position'}
         actions={can('project.manage') && <Link to="/projects?new=1"><Button type="primary">New project</Button></Link>}
       />
+      <WaitingPanel />
       {projects.isError ? (
         <Panel><ErrorState error={projects.error} onRetry={() => projects.refetch()} /></Panel>
       ) : (
@@ -123,6 +154,7 @@ function MemberDashboard() {
         title="Dashboard"
         description={isRequestor ? 'Projects you can raise fund requests against' : 'Projects with requests assigned to you'}
       />
+      <WaitingPanel />
       <Panel
         title={isRequestor ? 'Your projects' : 'Assigned projects'}
         subtitle={isRequestor ? 'Only active projects you are a member of are listed' : undefined}

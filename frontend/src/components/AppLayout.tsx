@@ -1,6 +1,7 @@
 import {
   AppstoreOutlined,
   AuditOutlined,
+  FileTextOutlined,
   FolderOpenOutlined,
   LogoutOutlined,
   TeamOutlined,
@@ -13,6 +14,7 @@ import { useAuth, useCurrentUser } from '../auth/AuthProvider'
 import { FullScreenLoader } from '../auth/guards'
 import { initials } from '../lib/format'
 import { ROLE_LABEL } from '../lib/labels'
+import { NotificationBell } from './NotificationBell'
 
 interface NavEntry {
   to: string
@@ -23,6 +25,7 @@ interface NavEntry {
 
 const WORKSPACE: NavEntry[] = [
   { to: '/', label: 'Dashboard', icon: <AppstoreOutlined /> },
+  { to: '/requests', label: 'Requests', icon: <FileTextOutlined /> },
   { to: '/projects', label: 'Projects', icon: <FolderOpenOutlined /> },
 ]
 
@@ -75,9 +78,12 @@ export function AppLayout() {
             <div className="account-name">{user.full_name}</div>
             <div className="account-role">{ROLE_LABEL[user.role]}</div>
           </div>
-          <Tooltip title="Sign out" placement="right">
-            <Button type="text" size="small" icon={<LogoutOutlined style={{ color: '#8f9aa8' }} />} onClick={logout} aria-label="Sign out" />
-          </Tooltip>
+          <div className="account-tools">
+            <NotificationBell />
+            <Tooltip title="Sign out" placement="right">
+              <Button type="text" size="small" icon={<LogoutOutlined style={{ color: '#8f9aa8' }} />} onClick={logout} aria-label="Sign out" />
+            </Tooltip>
+          </div>
         </div>
       </aside>
       <main className="main">
