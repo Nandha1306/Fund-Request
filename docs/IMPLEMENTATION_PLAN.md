@@ -134,6 +134,8 @@ All demo passwords are `Demo@1234` (local only; documented in the README).
 
 **Branch:** `feat/phase-1-data-model-auth` · **Time:** 35 min · **Architecture:** arch §10, §12
 
+Detailed plan: [phase/PHASE-1-data-model-auth.md](phase/PHASE-1-data-model-auth.md)
+
 ### 5.1 Tasks
 
 **Core helpers**
@@ -188,6 +190,8 @@ All demo passwords are `Demo@1234` (local only; documented in the README).
 ## 6. Phase 2 — Users, projects, budget engine, audit
 
 **Branch:** `feat/phase-2-users-projects-budget` · **Time:** 40 min · **Architecture:** arch §3, §9, §10.2
+
+Detailed plan: [phase/PHASE-2-users-projects-budget.md](phase/PHASE-2-users-projects-budget.md)
 
 ### 6.1 Tasks
 
@@ -505,7 +509,8 @@ PRJ-001 should show 32,000 liquidated and available = allocation − 32,000.
 | `PUT /api/requests/{id}/expenses`, `POST …/expenses/submit` | 4 | `expense.submit` + own request |
 | `POST /api/expense-items/{id}/review`, `POST …/send-back | final-approve` | 4 | `expense.review` + assigned approver |
 | `POST /api/expense-items/{id}/verify`, `POST …/finance-send-back | liquidate` | 4 | `expense.verify` / `request.liquidate` |
-| `GET /api/audit` | 5 | `audit.view` |
+| `GET /api/audit` | 2 | `audit.view` |
+| `GET /api/users/requestors`, `GET /api/users/invitations` | 2 | `project.members` / `user.manage` |
 
 ---
 

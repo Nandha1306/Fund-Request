@@ -19,6 +19,8 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:5173"]
 
+    rate_limit_enabled: bool = True  # set False in tests to avoid 429 on repeated logins
+
     media_root: str = "./media"
     max_upload_mb: int = 5
 

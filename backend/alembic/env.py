@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -8,7 +9,11 @@ from app.core.config import get_settings
 from app.core.db import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+
+# Allow the DATABASE_URL env-var to override the settings value.
+# This lets conftest.py point Alembic at fundreq_test without touching .env.
+db_url = os.environ.get("DATABASE_URL") or get_settings().database_url
+config.set_main_option("sqlalchemy.url", db_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
