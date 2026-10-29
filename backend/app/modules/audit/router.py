@@ -14,6 +14,7 @@ from app.modules.accounts.models import Invitation, User
 from app.modules.accounts.service import display_names
 from app.modules.audit.models import AuditLog
 from app.modules.audit.schemas import AuditLogOut
+from app.modules.fund_requests.models import FundRequest
 from app.modules.projects.models import Project
 
 router = APIRouter(tags=["audit"])
@@ -85,4 +86,11 @@ def _subject_labels(db: Session, rows: list[AuditLog]) -> dict[tuple[str, int], 
             select(Invitation.id, Invitation.email).where(Invitation.id.in_(invitation_ids))
         ):
             labels[("invitations", iid)] = email
+    if request_ids := ids.get("fund_requests"):
+        for rid, ref_no, code in db.execute(
+            select(FundRequest.id, FundRequest.ref_no, Project.code)
+            .join(Project, Project.id == FundRequest.project_id)
+            .where(FundRequest.id.in_(request_ids))
+        ):
+            labels[("fund_requests", rid)] = f"{ref_no} · {code}"
     return labels

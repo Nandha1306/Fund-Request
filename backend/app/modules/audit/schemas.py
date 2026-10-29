@@ -19,3 +19,18 @@ class AuditLogOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class NotificationOut(BaseModel):
+    id: int
+    type: str
+    message: str
+    request_id: int | None
+    read_at: datetime | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class UnreadCount(BaseModel):
+    count: int

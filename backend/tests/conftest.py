@@ -17,8 +17,10 @@ import os
 import subprocess
 import sys
 from collections.abc import Generator
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import bcrypt
@@ -244,3 +246,78 @@ def make_request(db_session: Session):
         return request
 
     return _factory
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: people and a small client for the request workflow
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def people(make_user):
+    """One of each actor the request workflow needs (all active)."""
+    return SimpleNamespace(
+        requestor=make_user(Role.REQUESTOR, full_name="Requestor A"),
+        requestor2=make_user(Role.REQUESTOR, full_name="Requestor B"),
+        approver=make_user(Role.APPROVER, full_name="Approver A"),
+        approver2=make_user(Role.APPROVER, full_name="Approver B"),
+        finance=make_user(Role.FINANCE, full_name="Finance Officer"),
+    )
+
+
+class Flow:
+    """Thin wrapper over the request endpoints so tests read like the workflow."""
+
+    def __init__(self, client: TestClient, auth_header, people, project: Project) -> None:
+        self.client, self.auth, self.people, self.project = client, auth_header, people, project
+
+    def create(self, user=None, *, project=None, approver=None, amount="30000.00", **extra):
+        body = {
+            "project_id": (project or self.project).id,
+            "approver_id": (approver or self.people.approver).id,
+            "amount_requested": str(amount),
+            "purpose": "Field visit",
+            **extra,
+        }
+        return self.client.post("/api/requests", json=body, headers=self.auth(user or self.people.requestor))
+
+    def raised(self, **kwargs) -> dict:
+        resp = self.create(**kwargs)
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    def get(self, user, request_id: int):
+        return self.client.get(f"/api/requests/{request_id}", headers=self.auth(user))
+
+    def act(self, user, request_id: int, action: str, *, headers=None, **body):
+        if "version" not in body:
+            body["version"] = self.get(self.people.finance, request_id).json()["version"]
+        return self.client.post(
+            f"/api/requests/{request_id}/{action}", json=body, headers={**self.auth(user), **(headers or {})}
+        )
+
+    def resubmit(self, user, request_id: int, *, amount="30000.00", approver=None, **extra):
+        body = {
+            "version": self.get(self.people.finance, request_id).json()["version"],
+            "approver_id": (approver or self.people.approver).id,
+            "amount_requested": str(amount),
+            "purpose": "Field visit (corrected)",
+            **extra,
+        }
+        return self.client.put(f"/api/requests/{request_id}", json=body, headers=self.auth(user))
+
+    def disburse(self, request_id: int, *, user=None, key=None, txn_ref=None, **extra):
+        key = key or f"test-key-{uuid4().hex}"
+        txn_ref = f"NEFT-{uuid4().hex[:10]}" if txn_ref is None else txn_ref
+        body = {"txn_ref": txn_ref, "disbursed_on": str(date.today()), **extra}
+        headers = {"Idempotency-Key": key}
+        return self.act(user or self.people.finance, request_id, "disburse", headers=headers, **body)
+
+    def ok(self, resp) -> dict:
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+
+@pytest.fixture()
+def flow(client, auth_header, people, make_project) -> Flow:
+    project = make_project(allocated="100000.00", members=(people.requestor,), created_by=people.finance)
+    return Flow(client, auth_header, people, project)
