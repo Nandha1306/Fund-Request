@@ -196,39 +196,39 @@ Detailed plan: [phase/PHASE-2-users-projects-budget.md](phase/PHASE-2-users-proj
 ### 6.1 Tasks
 
 **Audit (needed by everything that follows)**
-- [ ] `audit/service.py`:
+- [x] `audit/service.py`:
   - `record(db, *, entity, entity_id, action, actor, from_status=None, to_status=None, reason=None, snapshot=None)`;
   - `notify(db, *, user_ids, request_id, type, message)`.
   - Both only add rows to the caller's transaction and never commit.
 
 **Users and invitations** (`accounts`)
-- [ ] `POST /api/users/invite` (`user.manage`): takes email and role. Creates an invitation with a random token, stores only its SHA-256 hash, expires in 72 hours, and **returns the link once**.
-- [ ] `POST /api/auth/accept-invite`: takes token, full name and password. The token must be single-use and unexpired, and the email must not exist yet. Creates the user with the invited role.
-- [ ] `GET /api/users` (`user.manage`): list with filters and pagination.
-- [ ] `PATCH /api/users/{id}` (`user.manage`): role, `is_active`, `can_finance_ops`.
+- [x] `POST /api/users/invite` (`user.manage`): takes email and role. Creates an invitation with a random token, stores only its SHA-256 hash, expires in 72 hours, and **returns the link once**.
+- [x] `POST /api/auth/accept-invite`: takes token, full name and password. The token must be single-use and unexpired, and the email must not exist yet. Creates the user with the invited role.
+- [x] `GET /api/users` (`user.manage`): list with filters and pagination.
+- [x] `PATCH /api/users/{id}` (`user.manage`): role, `is_active`, `can_finance_ops`.
   - Super Admin cannot deactivate themselves.
   - Refuse to deactivate an approver who has requests in `PENDING_EXPENSE_APPROVAL` (422, listing those request refs; arch §11.3 #17).
-- [ ] `GET /api/users/approvers`: active approvers, for the request form. Excludes the caller.
+- [x] `GET /api/users/approvers`: active approvers, for the request form. Excludes the caller.
 
 **Projects** (`projects`)
-- [ ] `POST /api/projects`, `PATCH /api/projects/{id}` (`project.manage`): name, description, status, allocation.
+- [x] `POST /api/projects`, `PATCH /api/projects/{id}` (`project.manage`): name, description, status, allocation.
   - A new project writes an ALLOCATE ledger row.
   - A changed allocation goes through `budget.change_allocation` (422 if the new value is below the commitments).
   - Activate and deactivate are audited.
-- [ ] `GET /api/projects`:
+- [x] `GET /api/projects`:
   - Finance and Super Admin see all projects with their four buckets plus `available`.
   - Requestors see only **eligible** projects (active and assigned to them).
   - Approvers see the projects of requests they are involved in.
-- [ ] `PUT /api/projects/{id}/members` (`project.members`): replaces the member list with requestor user IDs only. Audited.
-- [ ] `GET /api/projects/{id}/ledger` (`project.manage`).
+- [x] `PUT /api/projects/{id}/members` (`project.members`): replaces the member list with requestor user IDs only. Audited.
+- [x] `GET /api/projects/{id}/ledger` (`project.manage`).
 
 **Budget engine** (`finance/budget.py`, the only code that changes project totals; arch §9.1)
-- [ ] Pure functions (no database access, unit-testable):
+- [x] Pure functions (no database access, unit-testable):
   - `available(p)`;
   - `reservation_for_submit(amount, disbursed)`;
   - `overage_delta(total_expenses, disbursed, current_overage)`;
   - `settlement(verified, disbursed)`, which returns liquidated, balance return and top-up.
-- [ ] Database functions. Each one runs **inside the caller's transaction** and writes a ledger row:
+- [x] Database functions. Each one runs **inside the caller's transaction** and writes a ledger row:
   - `lock_project(db, project_id)` → `select(Project).where(...).with_for_update()`
   - `reserve(db, project, request, amount)`: if `amount > available` raises `BusinessRuleViolation("Amount exceeds the project's available budget", details={available})`
   - `release(db, project, request)`: releases `request.reserved_amount`
@@ -236,16 +236,16 @@ Detailed plan: [phase/PHASE-2-users-projects-budget.md](phase/PHASE-2-users-proj
   - `adjust_overage(db, project, request, new_overage)`: reserves or releases the difference
   - `settle(db, project, request, verified_total)`: outstanding and overage cleared, liquidated increased, RETURN / TOPUP rows written
   - `change_allocation(db, project, new_allocation)`
-- [ ] `core/pagination.py`: `Page[T]` response model and `paginate(query, page, size)` (size at most 100).
+- [x] `core/pagination.py`: `Page[T]` response model and `paginate(query, page, size)` (size at most 100).
 
 ### 6.2 Tests
-- [ ] `test_budget_unit.py`: every event in arch §9.1; the worked example in arch §9.2 step by step (both the overspend and the underspend branch); allocation below commitments raises an error.
-- [ ] `test_users_api.py`:
+- [x] `test_budget_unit.py`: every event in arch §9.1; the worked example in arch §9.2 step by step (both the overspend and the underspend branch); allocation below commitments raises an error.
+- [x] `test_users_api.py`:
   - invite, then accept, then log in;
   - token reuse gives an error; an expired token gives an error;
   - a non-admin calling invite gets 403;
   - deactivating an approver with Stage 5 work gives 422.
-- [ ] `test_projects_api.py`:
+- [x] `test_projects_api.py`:
   - Finance creates and edits a project; a requestor gets 403 on create;
   - a requestor sees only eligible projects;
   - deactivation is audited;

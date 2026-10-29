@@ -52,17 +52,17 @@ Add both to `backend/.env.example`, and set `FRONTEND_BASE_URL: http://localhost
 ### Step 1: pagination, audit and notification writers, audit API
 **Commit:** `feat(audit): audit/notification writers, pagination helper and audit log API`
 
-- [ ] `app/core/pagination.py`
+- [x] `app/core/pagination.py`
   - `Page[T]` (Pydantic generic): `items`, `total`, `page`, `size`
   - `PageParams` dependency: `page >= 1` (default 1), `1 <= size <= 100` (default 20)
   - `paginate(db, stmt, params) -> tuple[list, int]`: runs a `count()` over the filtered statement plus `offset` / `limit`
-- [ ] `app/modules/audit/service.py` (never commits)
+- [x] `app/modules/audit/service.py` (never commits)
   - `record(db, *, entity, entity_id, action, actor_id, from_status=None, to_status=None, reason=None, snapshot=None) -> AuditLog`
   - `notify(db, *, user_ids, type, message, request_id=None)`: one `notifications` row per user (duplicates removed)
   - `snapshot_of(obj, fields)`: JSON-safe dict (Decimal and dates as strings), used for before / after snapshots
-- [ ] `app/modules/audit/router.py`
+- [x] `app/modules/audit/router.py`
   - `GET /api/audit` (`audit.view`): filters `entity`, `entity_id`, `actor_id`, `action`, `date_from`, `date_to`; newest first; paginated
-- [ ] Register the router in `main.py`.
+- [x] Register the router in `main.py`.
 
 ### Step 2: budget engine
 **Commit:** `feat(finance): budget engine with ledger and reconciliation`
@@ -110,18 +110,18 @@ The tests assert `reconcile(...) == project totals` after every scenario. This i
 ### Step 3: projects and members
 **Commit:** `feat(projects): project CRUD, members, role-filtered visibility and ledger view`
 
-- [ ] `app/modules/projects/schemas.py`
+- [x] `app/modules/projects/schemas.py`
   - `ProjectCreate`: code, name (1–255), description (optional), allocated (`Allocation`), status (default ACTIVE)
   - `ProjectUpdate`: name, description, status, allocated (all optional)
   - `ProjectOut`: id, code, name, description, status, allocated, reserved, outstanding, liquidated, **available**, created_at, updated_at
   - `MemberOut`, `MembersUpdate {user_ids: list[int]}`, `LedgerEntryOut`
-- [ ] `app/modules/projects/policies.py`
+- [x] `app/modules/projects/policies.py`
   - `visible_projects(user) -> stmt filter`:
     - `project.manage` → all projects;
     - Requestor → **eligible only** (ACTIVE and member);
     - Approver → projects of requests where they are the approver (empty until Phase 3).
   - `get_visible_project_or_404(db, user, project_id)`
-- [ ] `app/modules/projects/service.py` (each function ends with `db.commit()`)
+- [x] `app/modules/projects/service.py` (each function ends with `db.commit()`)
   - `create_project`: duplicate code → 409. Inserts the project, then `change_allocation(0 → allocated)` writes the ALLOCATE row, then audit `created`.
   - `update_project`:
     - lock the project;
@@ -132,7 +132,7 @@ The tests assert `reconcile(...) == project totals` after every scenario. This i
     - every id must be an **active REQUESTOR** (422 listing the invalid ids);
     - computes added / removed;
     - audit `members_changed` with both lists.
-- [ ] `app/modules/projects/router.py`
+- [x] `app/modules/projects/router.py`
 
   | Endpoint | Permission / rule | Notes |
   |---|---|---|
@@ -147,11 +147,11 @@ The tests assert `reconcile(...) == project totals` after every scenario. This i
 ### Step 4: users and invitations
 **Commit:** `feat(accounts): invitations, user management and user directories`
 
-- [ ] `app/modules/accounts/schemas.py` (extend)
+- [x] `app/modules/accounts/schemas.py` (extend)
   - `InviteCreate {email, role}`; `InviteOut {id, email, role, expires_at, invite_link}` (the link appears only in the create response)
   - `AcceptInvite {token, full_name, password}`: password 8–72 bytes
   - `UserAdminOut` (adds is_active, can_finance_ops, created_at); `UserUpdate {role?, is_active?, can_finance_ops?}`; `UserBrief {id, full_name, email}`
-- [ ] `app/modules/accounts/service.py`
+- [x] `app/modules/accounts/service.py`
   - `invite_user`:
     - an **active user** with that email exists → 409;
     - a pending invitation exists → it is expired, and a new one is issued;
@@ -175,7 +175,7 @@ The tests assert `reconcile(...) == project totals` after every scenario. This i
     | Deactivating an approver with requests in PENDING_APPROVAL | Allowed; response includes `needs_reassignment: [refs]` so Finance can reassign in Phase 3 |
     | Anything changed | audit `updated` with a before / after snapshot |
 
-- [ ] `app/modules/accounts/router.py` (extend)
+- [x] `app/modules/accounts/router.py` (extend)
 
   | Endpoint | Permission / rule | Notes |
   |---|---|---|
@@ -189,8 +189,8 @@ The tests assert `reconcile(...) == project totals` after every scenario. This i
 
 ### Step 5: docs
 **Commit:** `docs: phase 2 status`
-- [ ] Tick the boxes here and in `IMPLEMENTATION_PLAN.md` §6.
-- [ ] README: list the new endpoints under "API overview", and document the invite flow for the demo.
+- [x] Tick the boxes here and in `IMPLEMENTATION_PLAN.md` §6.
+- [x] README: list the new endpoints under "API overview", and document the invite flow for the demo.
 
 ---
 
@@ -229,9 +229,9 @@ Request rows needed by these tests (for example, an approver with a Stage 5 requ
 
 ## 6. Definition of done
 
-- [ ] All endpoints in Steps 1, 3 and 4 respond as specified, including 403 vs 404.
-- [ ] Budget engine: every function is covered by tests, and `reconcile()` matches project totals in every scenario.
-- [ ] Invitations: single use, expiring, hash-only storage, link shown once.
-- [ ] `pytest` passes and `ruff check .` is clean in `backend/`.
-- [ ] `alembic upgrade head` still clean. No new migration is expected; if a model changes, add a reviewed migration.
+- [x] All endpoints in Steps 1, 3 and 4 respond as specified, including 403 vs 404.
+- [x] Budget engine: every function is covered by tests, and `reconcile()` matches project totals in every scenario.
+- [x] Invitations: single use, expiring, hash-only storage, link shown once.
+- [x] `pytest` passes and `ruff check .` is clean in `backend/`.
+- [x] `alembic upgrade head` still clean. No new migration is expected; if a model changes, add a reviewed migration.
 - [ ] Manual check in §5 done; then `--no-ff` merge into `main` and push.

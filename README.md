@@ -4,7 +4,8 @@ Employees request funds against a project budget. The request is approved, Finan
 submits expenses with proofs, the approver reviews each item, and Finance verifies the items and liquidates. The whole
 process runs as a six-stage workflow with role-based access, budget reservations and a full audit trail.
 
-> **Status:** Phase 0, project skeleton. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for the phase plan.
+> **Status:** Phase 2 of 6 done: data model, authentication, users and invitations, projects, budget engine and audit
+> log. The request workflow (stages 1–6) follows in Phases 3–4. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
 
 ## Documents
 
@@ -51,6 +52,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 copy .env.example .env          # macOS / Linux: cp .env.example .env
 alembic upgrade head
+python -m app.seed              # demo users and projects; safe to run again
 uvicorn app.main:app --reload   # http://localhost:8000/docs
 
 # frontend (new terminal)
@@ -58,6 +60,46 @@ cd frontend
 npm install
 npm run dev                     # http://localhost:5173, proxies /api to :8000
 ```
+
+## Demo users
+
+`python -m app.seed` creates these accounts (password `Demo@1234`, local only) and three projects:
+PRJ-001 Rural Health Camp (500,000, active), PRJ-002 School Library Upgrade (200,000, active) and
+PRJ-003 Legacy Pilot (100,000, inactive).
+
+| Email | Role | Notes |
+|---|---|---|
+| `admin@demo.local` | Super Admin | invites users and manages access; no money actions unless `can_finance_ops` is granted |
+| `finance@demo.local` | Finance | manages projects and budgets; disburses, verifies and liquidates |
+| `approver.a@demo.local`, `approver.b@demo.local` | Approver | approver B is there to demo reassignment |
+| `req.a@demo.local` | Requestor | member of PRJ-001 and PRJ-002 |
+| `req.b@demo.local` | Requestor | member of PRJ-001 |
+
+## API overview
+
+All endpoints are under `/api`; Swagger at http://localhost:8000/docs (log in, then paste the `access_token` into
+**Authorize**). Errors share one shape, `{"error": {"code", "message", "details"}}`: 400 invalid input, 401 not
+logged in, 403 not allowed, 404 not visible or missing, 409 wrong state or duplicate, 422 business rule.
+
+| Area | Endpoints | Who |
+|---|---|---|
+| Auth | `POST /auth/login` · `POST /auth/refresh` · `POST /auth/accept-invite` · `GET /me` | public / logged in |
+| Users | `POST /users/invite` · `GET /users/invitations` · `GET /users` · `PATCH /users/{id}` | Super Admin |
+| Directories | `GET /users/approvers` (request form) · `GET /users/requestors` (members picker) | logged in / Finance, Super Admin |
+| Projects | `GET /projects` · `GET /projects/{id}` · `POST /projects` · `PATCH /projects/{id}` | list filtered by role; writes Finance, Super Admin |
+| Members | `GET /projects/{id}/members` · `PUT /projects/{id}/members` | Finance, Super Admin |
+| Ledger | `GET /projects/{id}/ledger` | Finance, Super Admin |
+| Audit | `GET /audit?entity=&entity_id=&actor_id=&action=&date_from=&date_to=` | Finance, Super Admin |
+
+Lists are paginated with `?page=` and `?size=` (at most 100) and return `{items, total, page, size}`.
+
+### Inviting a user (demo)
+
+1. As `admin@demo.local`: `POST /api/users/invite` with `{"email": "req.c@demo.local", "role": "REQUESTOR"}`.
+   The response contains `invite_link` **once**; only a hash of its token is stored, and it expires after 72 hours.
+2. Without logging in: `POST /api/auth/accept-invite` with the `token` from that link, a `full_name` and a
+   `password` (8–72 bytes). The new user is logged in straight away.
+3. The same link cannot be used again. Inviting the same email again invalidates the previous link.
 
 ## Tests and checks
 
