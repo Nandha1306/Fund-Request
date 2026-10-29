@@ -18,6 +18,7 @@ from app.core.config import get_settings
 from app.core.errors import NotAuthenticated
 
 PASSWORD_MAX_BYTES = 72  # bcrypt hard limit; enforced in request schemas
+PASSWORD_MIN_BYTES = 8  # only enforced when a password is being created
 
 
 # ---------------------------------------------------------------------------

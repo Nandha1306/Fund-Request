@@ -7,6 +7,7 @@ from app.core.errors import register_exception_handlers
 from app.core.health import router as health_router
 from app.core.rate_limit import limiter, rate_limit_exceeded
 from app.modules.accounts.router import router as accounts_router
+from app.modules.accounts.users_router import router as users_router
 from app.modules.audit.router import router as audit_router
 from app.modules.projects.router import router as projects_router
 
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router, prefix="/api")
     app.include_router(accounts_router, prefix="/api")
+    app.include_router(users_router, prefix="/api")
     app.include_router(projects_router, prefix="/api")
     app.include_router(audit_router, prefix="/api")
 

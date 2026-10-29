@@ -14,10 +14,17 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.modules.accounts import service
 from app.modules.accounts.deps import CurrentUser
 from app.modules.accounts.models import User
 from app.modules.accounts.permissions import permissions_for
-from app.modules.accounts.schemas import LoginInput, RefreshInput, TokenResponse, UserOut
+from app.modules.accounts.schemas import (
+    AcceptInvite,
+    LoginInput,
+    RefreshInput,
+    TokenResponse,
+    UserOut,
+)
 
 router = APIRouter(tags=["auth"])
 
@@ -53,6 +60,25 @@ def login(request: Request, body: LoginInput, db: DbSession) -> TokenResponse:
     if not password_ok or user is None or not user.is_active:
         raise NotAuthenticated("Invalid email or password")
 
+    settings = get_settings()
+    return TokenResponse(
+        access_token=create_access_token(user.id),
+        refresh_token=create_refresh_token(user.id),
+        expires_in=settings.jwt_access_minutes * 60,
+        user=_user_out(user),
+    )
+
+
+@router.post("/auth/accept-invite", response_model=TokenResponse, status_code=201)
+@limiter.limit("10/minute")
+def accept_invite(request: Request, body: AcceptInvite, db: DbSession) -> TokenResponse:
+    """Turn an invitation link into an account.
+
+    Public, single use and expiring; the user is logged in immediately, so no invitation
+    token ever needs to be stored on the client.  Unknown, expired and already-used tokens
+    all give the same 400 message.
+    """
+    user = service.accept_invite(db, body)
     settings = get_settings()
     return TokenResponse(
         access_token=create_access_token(user.id),
