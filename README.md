@@ -4,8 +4,26 @@ Employees request funds against a project budget. The request is approved, Finan
 submits expenses with proofs, the approver reviews each item, and Finance verifies the items and liquidates. The whole
 process runs as a six-stage workflow with role-based access, budget reservations and a full audit trail.
 
-> **Status:** Phase 2 of 6 done: data model, authentication, users and invitations, projects, budget engine and audit
-> log. The request workflow (stages 1–6) follows in Phases 3–4. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
+> **Status:** Phase 2 of 6 done and connected to the web app: sign-in, invitations, users and access, projects with
+> live budgets, members, ledger and the audit log. The request workflow (stages 1–6) follows in Phases 3–4, built
+> backend and frontend together. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
+
+## Web app
+
+Run the API and `npm run dev`, then open http://localhost:5173 and sign in with a demo account (listed on the sign-in
+page in development builds).
+
+| Screen | Who sees it | What it does |
+|---|---|---|
+| Sign in · Accept invitation | everyone | Sign in; set name and password from an invitation link |
+| Dashboard | everyone | Finance / Super Admin: budget position across active projects, most committed projects, recent activity, people. Requestors: their eligible projects. Approvers: projects of requests assigned to them |
+| Projects | everyone (filtered) | Search and filter; usage bar per project; create a project (Finance, Super Admin) |
+| Project detail | everyone who can see it | Five budget figures and bar; tabs for Members, Ledger, Activity and Details, each shown only to roles allowed to use it; edit, activate / deactivate |
+| Users & access | Super Admin | People and pending invitations; invite (link shown once); change role, active, finance operations |
+| Audit log | Finance, Super Admin | Filter by record, action and dates; expand a row for the before / after values |
+
+Money is shown in rupees with Indian grouping (₹5,00,000.00) and is never converted through floating point. Budget
+colours are the same on every screen: liquidated, disbursed, reserved, available.
 
 ## Documents
 
