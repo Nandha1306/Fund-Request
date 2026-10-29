@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     media_root: str = "./media"
     max_upload_mb: int = 5
 
+    # Invitation links (phase 2).  The link is built as {frontend_base_url}/accept-invite?token=…
+    frontend_base_url: str = "http://localhost:5173"
+    invite_ttl_hours: int = 72
+
 
 @lru_cache
 def get_settings() -> Settings:
