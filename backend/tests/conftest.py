@@ -1,15 +1,157 @@
+"""Pytest fixtures for Phase 1+.
+
+Key design decisions (from corrected plan):
+- Uses fundreq_test as the test database (never touches the dev DB).
+- Admin connection uses make_url().set(database="postgres") to avoid replacing
+  the username when the URL contains "fundreq" in multiple places.
+- Alembic is invoked as [sys.executable, "-m", "alembic", ...] so it works
+  regardless of whether the venv is activated in the shell.
+- Each test runs in a transaction that is rolled back; service-level commits
+  become savepoints via join_transaction_mode="create_savepoint".
+- The `client` fixture overrides get_db with the test session so API calls
+  hit the test database, not the dev database.
+- The rate limiter is disabled in the `app` fixture.
+"""
+
+import os
+import subprocess
+import sys
+from collections.abc import Generator
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
+from app.core.db import get_db
+from app.core.enums import Role
+from app.core.security import hash_password
 from app.main import create_app
+from app.modules.accounts.models import User
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+_dev_url = make_url(get_settings().database_url)
+_test_url = (
+    make_url(os.environ["TEST_DATABASE_URL"])
+    if "TEST_DATABASE_URL" in os.environ
+    else _dev_url.set(database="fundreq_test")
+)
 
 
-@pytest.fixture
+# ---------------------------------------------------------------------------
+# Session-scoped: database creation + migration (runs once per pytest session)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def test_engine():
+    """Create fundreq_test if it doesn't exist, migrate it, return the engine."""
+    # Connect to the *postgres* maintenance DB — safe even when the URL has
+    # "fundreq" as both the username and the database name.
+    admin_url = _dev_url.set(database="postgres")
+    admin_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
+    with admin_engine.connect() as conn:
+        exists = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :n"),
+            {"n": _test_url.database},
+        ).scalar()
+        if not exists:
+            conn.execute(text(f'CREATE DATABASE "{_test_url.database}"'))
+    admin_engine.dispose()
+
+    # Run the real migration so the migration file itself is tested.
+    env = {
+        **os.environ,
+        "DATABASE_URL": _test_url.render_as_string(hide_password=False),
+    }
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=BACKEND_DIR,
+        env=env,
+        check=True,
+    )
+
+    engine = create_engine(_test_url)
+    yield engine
+    engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# Function-scoped: each test gets a rolled-back transaction
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def db_session(test_engine) -> Generator[Session, None, None]:
+    """Wrap each test in a transaction; commits inside services become savepoints."""
+    conn = test_engine.connect()
+    outer = conn.begin()
+    session = Session(bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False)
+    yield session
+    session.close()
+    outer.rollback()
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# App + client fixtures (test DB wired in)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
 def app():
-    return create_app()
+    from app.core.rate_limit import limiter
+    limiter.enabled = False
+    application = create_app()
+    yield application
+    limiter.enabled = get_settings().rate_limit_enabled  # restore
 
 
-@pytest.fixture
-def client(app):
+@pytest.fixture()
+def client(app, db_session) -> Generator[TestClient, None, None]:
+    """TestClient wired to the test session so API calls never touch the dev DB."""
+    app.dependency_overrides[get_db] = lambda: db_session
     with TestClient(app) as c:
         yield c
+    app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Helper fixture: quick user factory
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def make_user(db_session: Session):
+    """Factory: create a User in the test session.
+
+    Usage::
+        user = make_user(Role.FINANCE)
+        user = make_user(Role.SUPER_ADMIN, can_finance_ops=True, email="x@y.com")
+    """
+    created: list[User] = []
+
+    def _factory(
+        role: Role,
+        *,
+        email: str | None = None,
+        password: str = "Test@1234",
+        full_name: str = "Test User",
+        is_active: bool = True,
+        can_finance_ops: bool = False,
+    ) -> User:
+        count = len(created)
+        user = User(
+            email=email or f"test_{role.value.lower()}_{count}@example.com",
+            full_name=full_name,
+            password_hash=hash_password(password),
+            role=role.value,
+            is_active=is_active,
+            can_finance_ops=can_finance_ops,
+        )
+        db_session.add(user)
+        db_session.flush()
+        created.append(user)
+        return user
+
+    return _factory
