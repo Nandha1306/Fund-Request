@@ -17,8 +17,11 @@ import os
 import subprocess
 import sys
 from collections.abc import Generator
+from decimal import Decimal
 from pathlib import Path
+from uuid import uuid4
 
+import bcrypt
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
@@ -27,12 +30,19 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.db import get_db
-from app.core.enums import Role
-from app.core.security import hash_password
+from app.core.enums import LedgerEntryType, ProjectStatus, RequestStatus, Role
+from app.core.security import create_access_token, hash_password
 from app.main import create_app
 from app.modules.accounts.models import User
+from app.modules.finance.models import BudgetLedger
+from app.modules.fund_requests.models import FundRequest
+from app.modules.projects.models import Project, ProjectMember
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+# Tests create many users; full-cost bcrypt (12 rounds) would dominate the run time.
+_real_gensalt = bcrypt.gensalt
+bcrypt.gensalt = lambda rounds=4, prefix=b"2b": _real_gensalt(rounds=4, prefix=prefix)
 
 _dev_url = make_url(get_settings().database_url)
 _test_url = (
@@ -153,5 +163,84 @@ def make_user(db_session: Session):
         db_session.flush()
         created.append(user)
         return user
+
+    return _factory
+
+
+@pytest.fixture()
+def auth_header():
+    """auth_header(user) -> {"Authorization": "Bearer …"}; skips the (bcrypt) login round trip."""
+
+    def _header(user: User) -> dict[str, str]:
+        return {"Authorization": f"Bearer {create_access_token(user.id)}"}
+
+    return _header
+
+
+@pytest.fixture()
+def make_project(db_session: Session, make_user):
+    """Factory: a project with ``allocated`` set **and** its ALLOCATE ledger row, so
+    ``budget.reconcile()`` matches the project row from the start."""
+
+    def _factory(
+        *,
+        allocated: Decimal | str = "100000.00",
+        status: ProjectStatus = ProjectStatus.ACTIVE,
+        code: str | None = None,
+        members: tuple[User, ...] = (),
+        created_by: User | None = None,
+    ) -> Project:
+        creator = created_by or make_user(Role.FINANCE)
+        allocated = Decimal(allocated)
+        project = Project(
+            code=code or f"T-{uuid4().hex[:8].upper()}",
+            name="Test project",
+            allocated=allocated,
+            status=status.value,
+            created_by=creator.id,
+        )
+        db_session.add(project)
+        db_session.flush()
+        if allocated:
+            db_session.add(
+                BudgetLedger(
+                    project_id=project.id,
+                    entry_type=LedgerEntryType.ALLOCATE.value,
+                    amount=allocated,
+                    actor_id=creator.id,
+                )
+            )
+        for member in members:
+            db_session.add(ProjectMember(project_id=project.id, user_id=member.id, added_by=creator.id))
+        db_session.flush()
+        return project
+
+    return _factory
+
+
+@pytest.fixture()
+def make_request(db_session: Session):
+    """Factory: insert a FundRequest row directly (the request services arrive in Phase 3)."""
+
+    def _factory(
+        project: Project,
+        requestor: User,
+        approver: User,
+        *,
+        status: RequestStatus = RequestStatus.PENDING_APPROVAL,
+        amount: Decimal | str = "1000.00",
+    ) -> FundRequest:
+        request = FundRequest(
+            ref_no=f"FR-T-{uuid4().hex[:8].upper()}",
+            project_id=project.id,
+            requestor_id=requestor.id,
+            approver_id=approver.id,
+            amount_requested=Decimal(amount),
+            purpose="test",
+            status=status.value,
+        )
+        db_session.add(request)
+        db_session.flush()
+        return request
 
     return _factory
